@@ -22,27 +22,24 @@
       </select></div>
       <fieldset class="form-field multi-merchant-field" id="multi-merchant-field" hidden>
         <legend>Merchants</legend>
+        <p class="merchant-picker-help">Search the merchants available to your account, then select one or more.</p>
         <div class="merchant-picker" id="merchant-picker">
-          <button class="merchant-picker-trigger" id="merchant-picker-trigger" type="button" aria-expanded="false" aria-controls="merchant-picker-panel">
-            <span class="merchant-picker-trigger-copy"><strong id="merchant-selection-summary">Choose merchants</strong><small>Search and select the merchants for this request</small></span>
-            <span class="merchant-picker-chevron" aria-hidden="true">⌄</span>
-          </button>
-          <div class="merchant-picker-selected" id="merchant-picker-selected" aria-live="polite"></div>
-          <div class="merchant-picker-popover" id="merchant-picker-panel" hidden>
-            <div class="merchant-picker-toolbar">
-              <label class="merchant-picker-search"><span aria-hidden="true">⌕</span><input id="merchant-picker-search" type="search" placeholder="Find a merchant" autocomplete="off"></label>
-              <div class="merchant-picker-actions"><button type="button" data-merchant-select="all">Select visible</button><button type="button" data-merchant-select="none">Clear</button></div>
-            </div>
-            <div class="merchant-picker-list" id="playground-merchants">
-              {% for merchant in playground_merchants %}<label class="merchant-picker-option" data-merchant-option>
-                <input type="checkbox" value="{{ merchant.merchant_uid }}" data-merchant-name="{{ merchant.merchant_name }}">
-                <span class="merchant-picker-check" aria-hidden="true"></span>
-                <span class="merchant-picker-copy"><strong>{{ merchant.merchant_name }}</strong><small>{{ merchant.merchant_uid }}</small></span>
-              </label>{% endfor %}
-            </div>
-            <p class="merchant-picker-empty" id="merchant-picker-empty" hidden>No merchants match that search.</p>
-            <div class="merchant-picker-footer"><span>Only merchants assigned to your account are listed.</span><strong id="merchant-selection-count" aria-live="polite">0 selected</strong></div>
+          <div class="merchant-picker-toolbar">
+            <label class="merchant-picker-search"><span aria-hidden="true">⌕</span><input id="merchant-picker-search" type="search" placeholder="Search by name or UID" autocomplete="off"></label>
+            <div class="merchant-picker-actions"><button type="button" data-merchant-select="all">Select visible</button><button type="button" data-merchant-select="none">Clear selection</button></div>
           </div>
+          <div class="merchant-picker-selection">
+            <strong id="merchant-selection-count" aria-live="polite">0 selected</strong>
+            <div class="merchant-picker-selected" id="merchant-picker-selected" aria-label="Selected merchants" aria-live="polite"></div>
+          </div>
+          <div class="merchant-picker-list" id="playground-merchants">
+            {% for merchant in playground_merchants %}<label class="merchant-picker-option" data-merchant-option>
+              <input type="checkbox" value="{{ merchant.merchant_uid }}" data-merchant-name="{{ merchant.merchant_name }}">
+              <span class="merchant-picker-copy"><strong>{{ merchant.merchant_name }}</strong><small>{{ merchant.merchant_uid }}</small></span>
+            </label>{% endfor %}
+          </div>
+          <p class="merchant-picker-empty" id="merchant-picker-empty" hidden>No merchants match that search.</p>
+          <div class="merchant-picker-footer"><span>Only merchants assigned to your account are listed.</span><span id="merchant-visible-count"></span></div>
         </div>
       </fieldset>
       <div class="playground-dates">
@@ -83,15 +80,12 @@
     const badge = document.getElementById('response-badge');
     const meta = document.getElementById('response-meta');
     const routePreview = document.getElementById('playground-route');
-    const merchantPickerShell = document.getElementById('merchant-picker');
-    const merchantPickerTrigger = document.getElementById('merchant-picker-trigger');
-    const merchantPickerPanel = document.getElementById('merchant-picker-panel');
-    const merchantSelectionSummary = document.getElementById('merchant-selection-summary');
     const merchantSelectionDisplay = document.getElementById('merchant-picker-selected');
     const merchantPicker = document.getElementById('playground-merchants');
     const merchantSearch = document.getElementById('merchant-picker-search');
     const merchantCount = document.getElementById('merchant-selection-count');
     const merchantEmpty = document.getElementById('merchant-picker-empty');
+    const merchantVisibleCount = document.getElementById('merchant-visible-count');
     const merchantOptions = merchantPicker.querySelectorAll('[data-merchant-option]');
     let accessToken = null;
 
@@ -111,43 +105,24 @@
       const selectedInputs = Array.from(merchantPicker.querySelectorAll('input:checked'));
       const selectedCount = selectedInputs.length;
       merchantCount.textContent = `${selectedCount} selected`;
-      merchantSelectionSummary.textContent = selectedCount
-        ? `${selectedCount} merchant${selectedCount === 1 ? '' : 's'} selected`
-        : 'Choose merchants';
-      merchantSelectionDisplay.replaceChildren(...selectedInputs.slice(0, 3).map((input) => {
+      merchantSelectionDisplay.replaceChildren(...selectedInputs.map((input) => {
         const chip = document.createElement('span');
         chip.className = 'merchant-picker-chip';
-        chip.textContent = input.dataset.merchantName;
+        const name = document.createElement('span');
+        name.textContent = input.dataset.merchantName;
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'merchant-picker-chip-remove';
+        remove.dataset.removeMerchant = input.value;
+        remove.setAttribute('aria-label', `Remove ${input.dataset.merchantName}`);
+        remove.textContent = '×';
+        chip.append(name, remove);
         return chip;
       }));
-      if (selectedCount > 3) {
-        const remaining = document.createElement('span');
-        remaining.className = 'merchant-picker-chip merchant-picker-chip-count';
-        remaining.textContent = `+${selectedCount - 3} more`;
-        merchantSelectionDisplay.append(remaining);
-      }
       merchantOptions.forEach((option) => {
         option.classList.toggle('selected', option.querySelector('input').checked);
       });
     };
-    const setMerchantPickerOpen = (isOpen) => {
-      merchantPickerPanel.hidden = !isOpen;
-      merchantPickerTrigger.setAttribute('aria-expanded', String(isOpen));
-      merchantPickerShell.classList.toggle('is-open', isOpen);
-      if (isOpen) merchantSearch.focus();
-    };
-    merchantPickerTrigger.addEventListener('click', () => {
-      setMerchantPickerOpen(merchantPickerPanel.hidden);
-    });
-    document.addEventListener('click', (event) => {
-      if (!merchantPickerShell.contains(event.target)) setMerchantPickerOpen(false);
-    });
-    merchantPickerShell.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && !merchantPickerPanel.hidden) {
-        setMerchantPickerOpen(false);
-        merchantPickerTrigger.focus();
-      }
-    });
     merchantPicker.addEventListener('change', updateMerchantSelection);
     merchantSearch.addEventListener('input', () => {
       const query = merchantSearch.value.trim().toLowerCase();
@@ -157,6 +132,17 @@
         if (!option.hidden) visibleCount += 1;
       });
       merchantEmpty.hidden = visibleCount !== 0;
+      merchantVisibleCount.textContent = `${visibleCount} merchant${visibleCount === 1 ? '' : 's'} shown`;
+    });
+    merchantSelectionDisplay.addEventListener('click', (event) => {
+      const removeButton = event.target.closest('[data-remove-merchant]');
+      if (!removeButton) return;
+      const checkbox = Array.from(merchantPicker.querySelectorAll('input[type="checkbox"]'))
+        .find((input) => input.value === removeButton.dataset.removeMerchant);
+      if (checkbox) {
+        checkbox.checked = false;
+        updateMerchantSelection();
+      }
     });
     document.querySelectorAll('[data-merchant-select]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -167,6 +153,7 @@
         updateMerchantSelection();
       });
     });
+    merchantVisibleCount.textContent = `${merchantOptions.length} merchants available`;
     updateMerchantSelection();
     endpoint.addEventListener('change', () => {
       const isMulti = endpoint.value === 'multi-report';

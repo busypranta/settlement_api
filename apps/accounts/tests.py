@@ -266,8 +266,9 @@ class PortalVisibilityTests(TestCase):
         self.assertContains(playground, '/api/auth/token/')
         self.assertContains(playground, 'merchant-picker-search')
         self.assertContains(playground, 'merchant-picker-option')
-        self.assertContains(playground, 'merchant-picker-trigger')
-        self.assertContains(playground, 'merchant-picker-panel')
+        self.assertContains(playground, 'merchant-picker-selection')
+        self.assertContains(playground, 'merchant-visible-count')
+        self.assertNotContains(playground, 'merchant-picker-trigger')
         self.assertNotContains(playground, '<select id="playground-merchants"')
 
     def test_authenticated_workspace_pages_render(self):

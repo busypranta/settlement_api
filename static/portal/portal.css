@@ -347,12 +347,6 @@ td { padding: 16px 18px; font-size: 13px; }
 .merchant-picker-option { display: flex; align-items: center; gap: 11px; min-width: 0; min-height: 59px; padding: 9px 12px; border: 1px solid #e7ece9; border-radius: 10px; background: #fff; cursor: pointer; transition: border-color .15s ease, background .15s ease, box-shadow .15s ease; }
 .merchant-picker-option:hover { border-color: #b9ddd0; background: #fbfdfc; }
 .merchant-picker-option.selected { border-color: #67bba4; background: #f1faf6; box-shadow: 0 0 0 2px #25a38612; }
-.merchant-picker-option input { position: absolute; width: 1px; height: 1px; opacity: 0; }
-.merchant-picker-check { display: grid; place-items: center; width: 19px; height: 19px; flex: 0 0 19px; border: 1.5px solid #cbd6cf; border-radius: 5px; background: #fff; }
-.merchant-picker-check::after { content: ""; width: 9px; height: 5px; border-left: 2px solid white; border-bottom: 2px solid white; transform: rotate(-45deg) translate(1px, -1px); opacity: 0; }
-.merchant-picker-option.selected .merchant-picker-check { border-color: #168b72; background: #168b72; }
-.merchant-picker-option.selected .merchant-picker-check::after { opacity: 1; }
-.merchant-picker-option input:focus-visible + .merchant-picker-check { outline: 3px solid #17a88e66; outline-offset: 2px; }
 .merchant-picker-copy { display: block; min-width: 0; }
 .merchant-picker-copy strong, .merchant-picker-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .merchant-picker-copy strong { color: #34463d; font-size: 12px; font-weight: 650; }
@@ -656,37 +650,35 @@ td { font-size: 12px; }
 .managed-panel .panel-heading { background: linear-gradient(110deg, #fff, #f7fbf9); }
 .page-footer { color: #84928a; }
 
-.merchant-picker { position: relative; }
-.merchant-picker-trigger { display: flex; align-items: center; justify-content: space-between; gap: 15px; width: 100%; min-height: 64px; padding: 11px 15px; border: 1px solid #dce7e1; border-radius: 12px; color: #2d4036; background: linear-gradient(120deg, #fff, #fbfdfc); text-align: left; cursor: pointer; transition: border-color .18s ease, box-shadow .18s ease, background .18s ease; }
-.merchant-picker-trigger:hover, .merchant-picker.is-open .merchant-picker-trigger { border-color: #70bba5; background: #fff; box-shadow: 0 0 0 4px #149b8010; }
-.merchant-picker-trigger-copy { display: grid; gap: 4px; min-width: 0; }
-.merchant-picker-trigger-copy strong { overflow: hidden; color: #263b31; font-size: 13px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
-.merchant-picker-trigger-copy small { color: #839087; font-size: 11px; font-weight: 400; }
-.merchant-picker-chevron { display: grid; place-items: center; width: 29px; height: 29px; flex: 0 0 29px; border: 1px solid #e3ebe6; border-radius: 9px; color: #29846e; background: #f6faf8; font-size: 17px; transition: transform .18s ease; }
-.merchant-picker.is-open .merchant-picker-chevron { transform: rotate(180deg); }
-.merchant-picker-selected { display: flex; flex-wrap: wrap; gap: 6px; padding: 9px 1px 1px; }
-.merchant-picker-selected:empty { display: none; }
-.merchant-picker-chip { display: inline-flex; align-items: center; max-width: 100%; padding: 6px 9px; overflow: hidden; border: 1px solid #d7ece3; border-radius: 99px; color: #14755f; background: #eef8f3; font-size: 11px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-.merchant-picker-chip-count { border-color: #e2e9e5; color: #69786f; background: #f4f7f5; }
-.merchant-picker-popover { position: absolute; z-index: 8; top: calc(100% + 8px); left: 0; right: 0; padding: 12px; border: 1px solid #dfe9e3; border-radius: 14px; background: #fff; box-shadow: 0 20px 48px #15372a24, 0 3px 10px #15372a0d; animation: picker-in .16s ease-out; }
-.merchant-picker-popover[hidden] { display: none; }
-.merchant-picker-toolbar { gap: 8px; margin-bottom: 9px; }
-.merchant-picker-search { display: flex !important; align-items: center; gap: 9px; height: 42px; padding: 0 11px; border-color: #e0e9e4; border-radius: 10px; color: #6d887b; background: #f9fbfa; }
+.merchant-picker { display: grid; gap: 10px; padding: 12px; border: 1px solid #e1e9e4; border-radius: 12px; background: #fbfdfc; }
+.merchant-picker-help { margin: -3px 0 10px; color: #758179; font-size: 12px; line-height: 1.5; }
+.merchant-picker-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.merchant-picker-search { display: flex !important; align-items: center; gap: 9px; height: 42px; min-width: 0; flex: 1; padding: 0 11px; border: 1px solid #e0e9e4; border-radius: 9px; color: #6d887b; background: #fff; }
 .merchant-picker-search:focus-within { border-color: #57ad96; box-shadow: 0 0 0 3px #159b8012; }
 .merchant-picker-search span { font-size: 17px; }
-.merchant-picker-search input { height: 100%; font-size: 12px; }
-.merchant-picker-actions { gap: 3px; }
-.merchant-picker-actions button { padding: 8px 7px; border-radius: 8px; white-space: nowrap; }
-.merchant-picker-list { max-height: 235px; gap: 4px; padding: 3px; border: 1px solid #edf1ee; border-radius: 10px; background: #fbfcfb; }
-.merchant-picker-empty { margin: 0; padding: 22px 12px; border: 1px dashed #dce8e1; border-radius: 10px; color: #78877e; background: #fbfdfc; font-size: 12px; text-align: center; }
-.merchant-picker-option { min-height: 53px; gap: 10px; padding: 8px 10px; border-color: transparent; border-radius: 8px; background: transparent; }
-.merchant-picker-option:hover { border-color: #e0eee7; background: #f5faf7; }
-.merchant-picker-option.selected { border-color: #d1eade; background: #edf8f2; box-shadow: none; }
-.merchant-picker-option input:focus-visible + .merchant-picker-check { outline-color: #149b80; }
+.merchant-picker-search input { width: 100%; height: 100%; min-width: 0; border: 0; outline: 0; color: #34463d; background: transparent; font-size: 12px; }
+.merchant-picker-actions { display: flex; flex: 0 0 auto; gap: 3px; }
+.merchant-picker-actions button { border: 0; padding: 8px 7px; border-radius: 8px; color: #25816d; background: transparent; font-size: 11px; font-weight: 650; white-space: nowrap; cursor: pointer; }
+.merchant-picker-actions button:hover { background: #eaf5f0; }
+.merchant-picker-selection { display: grid; gap: 8px; padding: 10px 11px; border: 1px solid #e7eee9; border-radius: 9px; background: #fff; }
+.merchant-picker-selection > strong { color: #58675e; font-size: 11px; }
+.merchant-picker-selected { display: flex; flex-wrap: wrap; gap: 6px; max-height: 92px; overflow: auto; }
+.merchant-picker-selected:empty::before { color: #98a39c; content: "Selected merchants will appear here"; font-size: 11px; }
+.merchant-picker-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 4px 5px 4px 9px; border: 1px solid #d7ece3; border-radius: 99px; color: #14755f; background: #eef8f3; font-size: 11px; font-weight: 650; }
+.merchant-picker-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.merchant-picker-chip-remove { display: grid; width: 19px; height: 19px; flex: 0 0 19px; place-items: center; padding: 0; border: 0; border-radius: 50%; color: #14755f; background: transparent; font-size: 16px; line-height: 1; cursor: pointer; }
+.merchant-picker-chip-remove:hover { color: #8f3946; background: #f8e8eb; }
+.merchant-picker-list { display: grid; max-height: 240px; gap: 3px; padding: 4px; overflow: auto; border: 1px solid #e7eee9; border-radius: 9px; background: #fff; scrollbar-color: #c7d8d1 transparent; scrollbar-width: thin; }
+.merchant-picker-empty { margin: 0; padding: 18px 12px; border: 1px dashed #dce8e1; border-radius: 9px; color: #78877e; background: #fff; font-size: 12px; text-align: center; }
+.merchant-picker-option { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 50px; padding: 7px 9px; border: 1px solid transparent; border-radius: 8px; background: transparent; cursor: pointer; }
+.merchant-picker-option:hover { border-color: #e0eee7; background: #f7faf8; }
+.merchant-picker-option.selected { border-color: #d1eade; background: #edf8f2; }
+.merchant-picker-option input { position: static; width: 17px; height: 17px; flex: 0 0 17px; margin: 0; padding: 0; border: 0; border-radius: 3px; background: transparent; box-shadow: none; opacity: 1; accent-color: #168b72; appearance: auto; cursor: pointer; }
+.merchant-picker-option input:focus { box-shadow: none; }
+.merchant-picker-option input:focus-visible { outline: 3px solid #17a88e66; outline-offset: 2px; }
 .merchant-picker-copy strong { font-size: 12px; }
 .merchant-picker-copy small { font-size: 10px; }
-.merchant-picker-footer { margin-top: 9px; padding: 3px 2px 0; font-size: 10px; }
-.merchant-picker-footer strong { font-size: 11px; }
+.merchant-picker-footer { display: flex; justify-content: space-between; gap: 10px; padding: 1px 2px 0; color: #87938b; font-size: 10px; }
 .playground-layout { gap: 22px; }
 .playground-request { position: relative; z-index: 2; overflow: visible; border-radius: 18px; }
 .playground-response { position: relative; z-index: 1; border-radius: 18px; }
@@ -696,11 +688,6 @@ td { font-size: 12px; }
 .playground-auth { border-color: #deebe4; background: linear-gradient(135deg, #f2f8f5, #fbfdfc); }
 .response-output { min-height: 420px; }
 
-@keyframes picker-in {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
 @media (max-width: 950px) {
   .playground-layout { grid-template-columns: minmax(0, 1fr); }
   .response-output { min-height: 300px; }
@@ -709,13 +696,38 @@ td { font-size: 12px; }
   .content-area { padding-top: 28px; }
   .panel-heading { min-height: 72px; padding: 16px; }
   .playground-form { padding: 18px 17px 20px; }
-  .merchant-picker-popover { max-height: min(70vh, 450px); overflow: auto; }
   .merchant-picker-toolbar { align-items: stretch; flex-direction: column; }
-  .merchant-picker-actions { justify-content: flex-start; }
+  .merchant-picker-actions { justify-content: space-between; }
 }
 @media (max-width: 440px) {
-  .merchant-picker-popover { left: -4px; right: -4px; padding: 9px; }
-  .merchant-picker-actions { justify-content: space-between; }
   .merchant-picker-actions button { padding-inline: 9px; }
-  .merchant-picker-footer { align-items: flex-start; flex-direction: column; gap: 5px; }
+  .merchant-picker-footer { flex-direction: column; gap: 4px; }
+}
+
+.portal-shell { background: #f5f8f7; }
+.content-area { padding-top: 36px; }
+.page-heading { margin-bottom: 27px; }
+.page-heading p { max-width: 680px; line-height: 1.6; }
+.panel, .stat-card { border-radius: 14px; box-shadow: 0 5px 18px #183b3008; }
+.panel-heading { background: #fff; }
+.form-field input:not([type="checkbox"]), .form-field select, .form-field textarea,
+.admin-form .form-control, .playground-form .form-control {
+  border-color: #dfe7e2;
+  border-radius: 8px;
+}
+.form-field input:not([type="checkbox"]):focus, .form-field select:focus, .form-field textarea:focus,
+.admin-form .form-control:focus, .playground-form .form-control:focus {
+  border-color: #57ad96;
+  box-shadow: 0 0 0 3px #159b8012;
+  outline: 0;
+}
+
+@media (max-width: 520px) {
+  .merchant-picker { padding: 9px; }
+  .merchant-picker-actions button { padding-inline: 5px; font-size: 10px; }
+  .merchant-picker-footer { line-height: 1.5; }
+}
+
+@media (max-width: 760px) {
+  .content-area { padding-top: 28px; }
 }
