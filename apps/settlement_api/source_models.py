@@ -17,7 +17,7 @@ class SettlementBatch(models.Model):
 
     class Meta:
         app_label = 'source'
-        db_table = 'SETTLEMENT_BATCH'
+        db_table = '"JPAY_RECON"."SETTLEMENT_BATCH"'
         managed = False
 
     def __str__(self):
@@ -35,7 +35,7 @@ class BankAccount(models.Model):
 
     class Meta:
         app_label = 'source'
-        db_table = 'bank_accounts'
+        db_table = '"JPAY_RECON"."BANK_ACCOUNTS"'
         managed = False
 
 
@@ -45,7 +45,7 @@ class AccountOwner(models.Model):
 
     class Meta:
         app_label = 'source'
-        db_table = 'account_owners'
+        db_table = '"JPAY_RECON"."ACCOUNT_OWNERS"'
         managed = False
 
 
@@ -55,7 +55,7 @@ class Vendor(models.Model):
 
     class Meta:
         app_label = 'source'
-        db_table = 'vendors'
+        db_table = '"JPAY_RECON"."vendors"'
         managed = False
 
 
@@ -65,17 +65,23 @@ class Processor(models.Model):
 
     class Meta:
         app_label = 'source'
-        db_table = 'processors'
+        db_table = '"JPAY_RECON"."processors"'
         managed = False
 
 
 class Merchant(models.Model):
+    account_owner_ptr = models.OneToOneField(
+        'AccountOwner',
+        on_delete=models.DO_NOTHING,
+        db_column='ACCOUNT_OWNER_PTR_ID',
+        primary_key=True,
+    )
     name = models.CharField(max_length=150)
     is_active = models.BooleanField(default=True)
 
     class Meta:
         app_label = 'source'
-        db_table = 'merchants'
+        db_table = '"JPAY_RECON"."merchants"'
         managed = False
 
 
@@ -90,7 +96,7 @@ class SettlementLine(models.Model):
 
     class Meta:
         app_label = 'source'
-        db_table = 'SETTLEMENT_LINE'
+        db_table = '"JPAY_RECON"."SETTLEMENT_LINE"'
         managed = False
 
 
@@ -106,5 +112,15 @@ class OwnTransaction(models.Model):
 
     class Meta:
         app_label = 'source'
-        db_table = 'INGESTION_OWN_TRANSACTION'
+        db_table = '"JPAY_RECON"."INGESTION_OWN_TRANSACTION"'
         managed = False
+
+class SourceContentType(models.Model):
+    id = models.PositiveIntegerField(primary_key=True)
+    app_label = models.CharField(max_length=100)
+    model = models.CharField(max_length=100)
+
+    class Meta:
+        managed = False
+        db_table = '"JPAY_RECON"."DJANGO_CONTENT_TYPE"'
+    

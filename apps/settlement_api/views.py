@@ -51,22 +51,28 @@ class SettlementReportSingleView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, merchant_uid):
-        serializer = DateRangeSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
-        merchant = get_object_or_404(PortalMerchant, merchant_uid=merchant_uid, is_active=True)
-        if not merchant_is_allowed(request.user, merchant):
+        try:
+            serializer = DateRangeSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            data = serializer.validated_data
+            merchant = get_object_or_404(PortalMerchant, merchant_uid=merchant_uid, is_active=True)
+            if not merchant_is_allowed(request.user, merchant):
+                return Response(
+                    {'success': False, 'error': 'Not authorized for this merchant'},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            return Response({'success': True, 'data': [{
+                'merchant_uid': merchant.merchant_uid,
+                'merchant_name': merchant.merchant_name,
+                'settlements': compute_settlement_for_merchant(
+                    merchant, data['from_date'], data['to_date'],
+                ),
+            }]})
+        except Exception as e:
             return Response(
-                {'success': False, 'error': 'Not authorized for this merchant'},
-                status=status.HTTP_403_FORBIDDEN,
+                {'success': False, 'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-        return Response({'success': True, 'data': [{
-            'merchant_uid': merchant.merchant_uid,
-            'merchant_name': merchant.merchant_name,
-            'settlements': compute_settlement_for_merchant(
-                merchant, data['from_date'], data['to_date'],
-            ),
-        }]})
 
 
 class SettlementTransactionsView(APIView):
@@ -94,7 +100,13 @@ class SettlementTransactionsView(APIView):
             txn_datetime__date__gte=data['from_date'],
             txn_datetime__date__lte=data['to_date'],
         ).order_by('txn_datetime', 'pk')
-        total_records = queryset.count()
+        try:
+            total_records = queryset.count()
+        except Exception as e:
+            return Response(
+                {'success': False, 'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
         page_size = 200
         total_pages = (total_records + page_size - 1) // page_size
         transactions = queryset[(page - 1) * page_size:page * page_size]

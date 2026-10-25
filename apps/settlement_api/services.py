@@ -1,10 +1,5 @@
-from collections import defaultdict
 from decimal import Decimal
-
-from django.contrib.contenttypes.models import ContentType
-
-from apps.settlement_api.source_models import Merchant, SettlementBatch, SettlementLine
-
+from apps.settlement_api.source_models import Merchant, SettlementBatch, SettlementLine, SourceContentType
 
 def normalize_name_key(name):
     return ' '.join((name or '').strip().casefold().split())
@@ -24,9 +19,9 @@ def get_merchant_owner_from_line(line):
 
 def compute_settlement_for_merchant(portal_merchant, from_date, to_date):
     merchant_content_type_id = (
-        ContentType.objects.using('source')
+        SourceContentType.objects.using('source')
         .filter(app_label='merchants', model='merchant')
-        .values_list('pk', flat=True)
+        .values_list('id', flat=True)
         .first()
     )
     if merchant_content_type_id is None:

@@ -1,65 +1,179 @@
-{% extends "portal/base.html" %}
-{% block title %}Merchant access{% endblock %}
-{% block breadcrumb %}Merchant access{% endblock %}
+{% extends 'portal/base.html' %}
+{% block title %}
+  Merchant access
+{% endblock %}
+{% block breadcrumb %}
+  Merchant access
+{% endblock %}
 {% block content %}
-<div class="page-heading">
-  <div>
-    <div class="eyebrow light-eyebrow"><span class="eyebrow-dot"></span> ACCESS DIRECTORY</div>
-    <h1>{% if is_admin %}Merchant management{% else %}Merchant access{% endif %}</h1>
-    <p class="muted">{% if is_admin %}Register merchants and grant access to users in your management scope.{% else %}See merchants available to your account and their current status.{% endif %}</p>
+  <div class="page-heading">
+    <div>
+      <h1>
+        {% if is_admin %}
+          Merchant management
+        {% else %}
+          Merchant access
+        {% endif %}
+      </h1>
+      <p class="muted">
+        {% if is_admin %}
+          Register merchants and grant access to users in your management scope.
+        {% else %}
+          Merchants available to your account and their status.
+        {% endif %}
+      </p>
+    </div>
   </div>
-</div>
 
-{% if is_admin %}
-<div class="admin-tools-grid merchant-tools">
-  <section class="panel admin-form-panel">
-    <div class="panel-heading"><div><h2>Add a merchant</h2><p>UID and normalized merchant name must be unique.</p></div><span class="stat-icon icon-teal">◈</span></div>
-    <form method="post" class="admin-form">
-      {% csrf_token %}<input type="hidden" name="action" value="create_merchant">
-      {{ merchant_form.non_field_errors }}
-      {% for field in merchant_form %}
-      <div class="form-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<span class="field-error">{{ error }}</span>{% endfor %}</div>
-      {% endfor %}
-      <button class="button button-primary" type="submit">Add merchant <span>→</span></button>
-    </form>
-  </section>
-  <section class="panel admin-form-panel">
-    <div class="panel-heading"><div><h2>Grant merchant access</h2><p>Assign an active merchant to a user in your scope.</p></div><span class="stat-icon icon-violet">♙</span></div>
-    <form method="post" class="admin-form">
-      {% csrf_token %}<input type="hidden" name="action" value="assign_merchant">
-      {{ assignment_form.non_field_errors }}
-      {% for field in assignment_form %}
-      <div class="form-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<span class="field-error">{{ error }}</span>{% endfor %}</div>
-      {% endfor %}
-      <button class="button button-dark" type="submit">Grant access <span>→</span></button>
-    </form>
-  </section>
-</div>
-{% endif %}
-
-<section class="panel full-panel">
-  <div class="panel-heading">
-    <div><h2>{% if is_admin %}Merchants in your scope{% else %}Assigned merchants{% endif %}</h2><p>{{ merchants|length }} merchant{{ merchants|length|pluralize }} visible to your account</p></div>
-    <label class="search-box"><span>⌕</span><input data-table-search type="search" placeholder="Search by name or UID"></label>
-  </div>
-  {% if merchants %}
-  <div class="table-wrap"><table><thead><tr><th>Merchant</th><th>Merchant UID</th><th>Status</th><th>API availability</th>{% if is_admin %}<th>Manage</th>{% endif %}</tr></thead><tbody>
-  {% for merchant in merchants %}
-    <tr data-search-row>
-      <td><div class="table-user"><span class="merchant-avatar">{{ merchant.merchant_name|slice:":1"|upper }}</span><span><strong>{{ merchant.merchant_name }}</strong><small>Registered merchant</small></span></div></td>
-      <td><code class="uid-code">{{ merchant.merchant_uid }}</code></td>
-      <td><span class="status-pill {% if merchant.is_active %}status-ok{% else %}status-muted{% endif %}"><i></i>{% if merchant.is_active %}Active{% else %}Inactive{% endif %}</span></td>
-      <td>{% if merchant.is_active %}<span class="availability"><i></i>Available to use</span>{% else %}<span class="table-secondary">Contact your administrator</span>{% endif %}</td>
-      {% if is_admin %}<td>{% if merchant.id in manageable_merchant_ids %}
-        <form method="post">{% csrf_token %}<input type="hidden" name="action" value="toggle_merchant"><input type="hidden" name="merchant_id" value="{{ merchant.id }}">
-          <button class="button button-small {% if merchant.is_active %}button-danger{% else %}button-soft{% endif %}" type="submit">{% if merchant.is_active %}Deactivate{% else %}Activate{% endif %}</button>
+  {% if is_admin %}
+    <div class="admin-tools-grid merchant-tools">
+      <section class="panel admin-form-panel">
+        <div class="panel-heading">
+          <div>
+            <h2>Add a merchant</h2><p>UID and normalized merchant name must be unique.</p>
+          </div><span class="stat-icon icon-teal">◈</span>
+        </div>
+        <form method="post" class="admin-form">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="create_merchant" />
+          {{ merchant_form.non_field_errors }}
+          {% for field in merchant_form %}
+            <div class="form-field">
+              <label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}
+                <span class="field-error">{{ error }}</span>
+              {% endfor %}
+            </div>
+          {% endfor %}
+          <button class="button button-primary" type="submit">Add merchant <span>→</span></button>
         </form>
-      {% else %}<span class="table-secondary">Outside scope</span>{% endif %}</td>{% endif %}
-    </tr>
-  {% endfor %}
-  </tbody></table></div>
-  {% else %}
-  <div class="empty-state"><span class="empty-icon">◈</span><strong>{% if is_admin %}No merchants in scope yet{% else %}No merchants assigned{% endif %}</strong><p>{% if is_admin %}Add a merchant above or ask a SUPERADMIN to assign users to you.{% else %}Ask your administrator to grant merchant access.{% endif %}</p></div>
+      </section>
+      <section class="panel admin-form-panel">
+        <div class="panel-heading">
+          <div>
+            <h2>Grant merchant access</h2><p>Assign an active merchant to a user in your scope.</p>
+          </div><span class="stat-icon icon-violet">♙</span>
+        </div>
+        <form method="post" class="admin-form">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="assign_merchant" />
+          {{ assignment_form.non_field_errors }}
+          {% for field in assignment_form %}
+            <div class="form-field">
+              <label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}
+                <span class="field-error">{{ error }}</span>
+              {% endfor %}
+            </div>
+          {% endfor %}
+          <button class="button button-dark" type="submit">Grant access <span>→</span></button>
+        </form>
+      </section>
+    </div>
   {% endif %}
-</section>
+
+  <section class="panel full-panel">
+    <div class="panel-heading">
+      <div>
+        <h2>
+          {% if is_admin %}
+            Merchants in your scope
+          {% else %}
+            Assigned merchants
+          {% endif %}
+        </h2><p>{{ merchants|length }} merchant{{ merchants|length|pluralize }} visible to your account</p>
+      </div>
+      <label class="search-box"><span>⌕</span><input data-table-search type="search" placeholder="Search by name or UID" /></label>
+    </div>
+    {% if merchants %}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Merchant</th>
+              <th>Merchant UID</th>
+              <th>Status</th>
+              <th>API availability</th>
+              {% if is_admin %}
+                <th>Manage</th>
+              {% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for merchant in merchants %}
+              <tr data-search-row>
+                <td>
+                  <div class="table-user">
+                    <span class="merchant-avatar">{{ merchant.merchant_name|slice:':1'|upper }}</span><span><strong>{{ merchant.merchant_name }}</strong><small>Registered merchant</small></span>
+                  </div>
+                </td>
+                <td>
+                  <code class="uid-code">{{ merchant.merchant_uid }}</code>
+                </td>
+                <td>
+                  <span class="status-pill {% if merchant.is_active %}
+                      status-ok
+                    {% else %}
+                      status-muted
+                    {% endif %}">
+                    <i></i>{% if merchant.is_active %}
+                      Active
+                    {% else %}
+                      Inactive
+                    {% endif %}
+                  </span>
+                </td>
+                <td>
+                  {% if merchant.is_active %}
+                    <span class="availability"><i></i>Available to use</span>
+                  {% else %}
+                    <span class="table-secondary">Contact your administrator</span>
+                  {% endif %}
+                </td>
+                {% if is_admin %}
+                  <td>
+                    {% if merchant.id in manageable_merchant_ids %}
+                      <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="toggle_merchant" />
+                        <input type="hidden" name="merchant_id" value="{{ merchant.id }}" />
+                        <button class="button button-small {% if merchant.is_active %}
+                            button-danger
+                          {% else %}
+                            button-soft
+                          {% endif %}"
+                          type="submit">
+                          {% if merchant.is_active %}
+                            Deactivate
+                          {% else %}
+                            Activate
+                          {% endif %}
+                        </button>
+                      </form>
+                    {% else %}
+                      <span class="table-secondary">Outside scope</span>
+                    {% endif %}
+                  </td>
+                {% endif %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <span class="empty-icon">◈</span><strong>
+          {% if is_admin %}
+            No merchants in scope yet
+          {% else %}
+            No merchants assigned
+          {% endif %}
+        </strong><p>
+          {% if is_admin %}
+            Add a merchant above or ask a SUPERADMIN to assign users to you.
+          {% else %}
+            Ask your administrator to grant merchant access.
+          {% endif %}
+        </p>
+      </div>
+    {% endif %}
+  </section>
 {% endblock %}
