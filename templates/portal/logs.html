@@ -1,0 +1,25 @@
+{% extends "portal/base.html" %}
+{% block title %}API activity{% endblock %}
+{% block breadcrumb %}API activity{% endblock %}
+{% block content %}
+<div class="page-heading heading-with-action">
+  <div><div class="eyebrow light-eyebrow"><span class="eyebrow-dot"></span> REQUEST HISTORY</div><h1>API activity</h1><p class="muted">A traceable history of calls visible to your account.</p></div>
+  <a class="button button-dark" href="/api/docs/">API documentation <span>↗</span></a>
+</div>
+<section class="panel full-panel">
+  <div class="panel-heading log-toolbar"><div><h2>Request log</h2><p>{{ page_obj.paginator.count }} requests in your permitted scope</p></div>
+    <div class="toolbar-controls"><label class="search-box"><span>⌕</span><input data-table-search type="search" placeholder="Search endpoint or request ID"></label>
+    <div class="filter-pills"><a class="{% if not status_filter %}selected{% endif %}" href="{% url 'portal-api-logs-page' %}">All</a><a class="{% if status_filter == 'success' %}selected{% endif %}" href="?status=success">Successful</a><a class="{% if status_filter == 'failed' %}selected{% endif %}" href="?status=failed">Failed</a></div></div>
+  </div>
+  {% if page_obj.object_list %}
+  <div class="table-wrap"><table><thead><tr><th>Request</th><th>User</th><th>Method</th><th>Response</th><th>Duration</th><th>Merchant</th><th>Timestamp</th></tr></thead><tbody>
+    {% for log in page_obj %}
+    <tr data-search-row><td><span class="endpoint-name">{{ log.endpoint }}</span><small class="table-secondary request-id">{{ log.request_id }}</small></td><td>{{ log.user.username|default:"Anonymous" }}</td><td><span class="method-tag">{{ log.http_method }}</span></td><td><span class="status-pill {% if log.http_status < 400 %}status-ok{% else %}status-error{% endif %}"><i></i>{{ log.http_status }}</span></td><td>{{ log.duration_ms|default:"—" }}{% if log.duration_ms != None %} ms{% endif %}</td><td>{{ log.merchant_uid|default:"—" }}</td><td class="table-secondary">{{ log.created_at|date:"M j, Y · H:i:s" }}</td></tr>
+    {% endfor %}
+  </tbody></table></div>
+  <div class="pagination"><span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span><div>{% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}{% if status_filter %}&status={{ status_filter }}{% endif %}">← Previous</a>{% endif %}{% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}{% if status_filter %}&status={{ status_filter }}{% endif %}">Next →</a>{% endif %}</div></div>
+  {% else %}
+  <div class="empty-state"><span class="empty-icon">≋</span><strong>No matching requests</strong><p>Try another filter, or come back after making an API call.</p></div>
+  {% endif %}
+</section>
+{% endblock %}

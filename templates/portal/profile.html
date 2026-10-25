@@ -1,0 +1,31 @@
+{% extends "portal/base.html" %}
+{% block title %}Profile & security{% endblock %}
+{% block breadcrumb %}Profile & security{% endblock %}
+{% block content %}
+<div class="page-heading"><div><div class="eyebrow light-eyebrow"><span class="eyebrow-dot"></span> ACCOUNT SETTINGS</div><h1>Profile & security</h1><p class="muted">Manage your account details and keep your sign-in secure.</p></div></div>
+<div class="profile-grid">
+  <section class="panel profile-panel">
+    <div class="panel-heading"><div><h2>Personal details</h2><p>Update the information shown in your portal.</p></div></div>
+    <form method="post" class="settings-form">
+      {% csrf_token %}<input type="hidden" name="action" value="profile">
+      {{ profile_form.non_field_errors }}
+      {% for field in profile_form %}
+      <div class="form-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.name == 'mobile' %}<div class="field-help">Bangladesh mobile: 01XXXXXXXXX or +8801XXXXXXXXX.</div>{% endif %}{% for error in field.errors %}<span class="field-error">{{ error }}</span>{% endfor %}</div>
+      {% endfor %}
+      <button class="button button-primary" type="submit">Save changes <span>→</span></button>
+    </form>
+  </section>
+  <section class="panel profile-panel">
+    <div class="panel-heading"><div><h2>Change password</h2><p>Choose a strong password you don't use elsewhere.</p></div></div>
+    <form method="post" class="settings-form">
+      {% csrf_token %}<input type="hidden" name="action" value="password">
+      {{ password_form.non_field_errors }}
+      {% for field in password_form %}
+      <div class="form-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{% if field.name == 'new_password1' %}<div class="password-input-row">{{ field }}<div class="password-strength" data-strength-for="{{ field.id_for_label }}" aria-live="polite"><div class="strength-track"><span></span><span></span><span></span><span></span></div><span class="strength-label">8–16 characters <strong>Not entered</strong></span></div></div>{% else %}{{ field }}{% endif %}{% if field.help_text %}<div class="password-hint">{{ field.help_text }}</div>{% endif %}{% for error in field.errors %}<span class="field-error">{{ error }}</span>{% endfor %}</div>
+      {% endfor %}
+      <button class="button button-dark" type="submit">Update password <span>→</span></button>
+    </form>
+  </section>
+</div>
+<section class="security-note"><span>◉</span><div><strong>API authentication</strong><p>Your portal and API use the same account credentials. Business API requests still require a JWT access token, which expires after two hours.</p></div><a href="/api/docs/">View token guide ↗</a></section>
+{% endblock %}

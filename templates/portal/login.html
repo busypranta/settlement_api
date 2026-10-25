@@ -1,0 +1,44 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f3f7f5">
+  <title>Sign in · Settlement Portal</title>
+  <link rel="stylesheet" href="{% static 'portal/portal.css' %}">
+</head>
+<body class="login-page">
+  <header class="login-header">
+    <a class="login-brand" href="{% url 'portal-login' %}">
+      <span class="login-brand-mark">S</span>
+      <span><strong>Settlement Portal</strong><small>MERCHANT OPERATIONS</small></span>
+    </a>
+    <div class="login-header-note"><span class="login-header-dot"></span> Secure access for your organization</div>
+  </header>
+  <main class="login-main">
+    <div class="login-watermark" aria-hidden="true">S</div>
+    <section class="login-card">
+      <div class="login-card-eyebrow"><span></span> YOUR SETTLEMENT WORKSPACE</div>
+      <h1>Welcome back.</h1>
+      <p class="login-subtitle">Sign in to review your API activity and merchant access.</p>
+      {% if form.errors %}
+        <div class="form-alert" role="alert">We couldn't sign you in. Check your username and password, then try again.</div>
+      {% endif %}
+      <form method="post" class="login-form">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next }}">
+        <label for="{{ form.username.id_for_label }}">Username</label>
+        {{ form.username }}
+        <label for="{{ form.password.id_for_label }}">Password</label>
+        {{ form.password }}
+        <button class="button button-primary login-submit" type="submit">Sign in to your account <span>→</span></button>
+      </form>
+      <div class="login-divider"><span></span><i>PORTAL ACCESS</i><span></span></div>
+      <p class="login-hint">Use the same account credentials as your Settlement API.</p>
+    </section>
+    <div class="login-footnote"><span class="login-lock">◈</span> Your account is protected with encrypted password storage and secure sessions.</div>
+  </main>
+  <footer class="login-footer"><span>© {% now "Y" %} Settlement Portal</span><span>Need access? Contact your portal administrator.</span></footer>
+</body>
+</html>

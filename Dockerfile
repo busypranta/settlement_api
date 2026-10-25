@@ -1,0 +1,24 @@
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+RUN SECRET_KEY=build-only-secret \
+    PORTAL_ORACLE_DSN=localhost:1521/portal \
+    PORTAL_ORACLE_USER=build_user \
+    PORTAL_ORACLE_PASSWORD=build_password \
+    SOURCE_ORACLE_DSN=localhost:1521/source \
+    SOURCE_ORACLE_USER=build_user \
+    SOURCE_ORACLE_PASSWORD=build_password \
+    python manage.py collectstatic --noinput
+
+EXPOSE 8000
+
+CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000"]
