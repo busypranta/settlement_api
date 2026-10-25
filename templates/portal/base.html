@@ -65,16 +65,20 @@
   <script>
     const search = document.querySelector('[data-table-search]');
     const roleFilter = document.querySelector('[data-account-role-filter]');
+    const statusFilter = document.querySelector('[data-account-status-filter]');
     const filterRows = () => {
       const query = search ? search.value.trim().toLowerCase() : '';
       const role = roleFilter ? roleFilter.value : '';
+      const status = statusFilter ? statusFilter.value : '';
       document.querySelectorAll('[data-search-row]').forEach((row) => {
         row.hidden = !row.textContent.toLowerCase().includes(query)
-          || (role !== '' && row.dataset.accountRole !== role);
+          || (role !== '' && row.dataset.accountRole !== role)
+          || (status !== '' && row.dataset.accountStatus !== status);
       });
     };
     if (search) search.addEventListener('input', filterRows);
     if (roleFilter) roleFilter.addEventListener('change', filterRows);
+    if (statusFilter) statusFilter.addEventListener('change', filterRows);
 
     document.querySelectorAll('[data-password-strength]').forEach((input) => {
       const meter = document.querySelector(`[data-strength-for="${input.id}"]`);

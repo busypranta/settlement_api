@@ -219,6 +219,7 @@ def managed_accounts(request):
     )
     is_superadmin = request.user.role == User.ROLE_SUPERADMIN or request.user.is_superuser
     admin_assignment_form = AdminUserAssignmentForm() if is_superadmin else None
+    show_merchant_tools = False
 
     if request.method == 'POST':
         action = request.POST.get('action')
@@ -266,6 +267,7 @@ def managed_accounts(request):
                 messages.error(request, 'Password was not changed. Use a stronger password and try again.')
 
         elif action == 'assign_merchant':
+            show_merchant_tools = is_superadmin
             merchant_assignment_form = MerchantAssignmentForm(
                 request.POST,
                 users=users,
@@ -355,6 +357,7 @@ def managed_accounts(request):
         'is_superadmin': is_superadmin,
         'admin_assignment_form': admin_assignment_form,
         'admin_assignments': explicit_assignments,
+        'show_merchant_tools': show_merchant_tools,
         'can_manage_user': can_manage_user,
     })
 

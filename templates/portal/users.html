@@ -59,7 +59,7 @@
 </div>
 
 {% if is_superadmin %}
-<details class="admin-advanced-tools">
+<details class="admin-advanced-tools" {% if show_merchant_tools %}open{% endif %}>
   <summary><span><strong>Merchant assignments</strong><small>Grant merchant access or manage current administrator scopes</small></span><span class="advanced-chevron">⌄</span></summary>
   <div class="advanced-tools-content">
     <section class="panel admin-form-panel">
@@ -104,12 +104,13 @@
     <div class="account-directory-controls">
       <label class="search-box"><span>⌕</span><input data-table-search type="search" placeholder="Search accounts"></label>
       {% if is_superadmin %}<label class="visually-hidden" for="account-role-filter">Filter by role</label><select id="account-role-filter" class="account-role-filter" data-account-role-filter><option value="">All roles</option><option value="ADMIN">Admins</option><option value="USER">Users</option><option value="SUPERADMIN">Super admins</option></select>{% endif %}
+      <label class="visually-hidden" for="account-status-filter">Filter by status</label><select id="account-status-filter" class="account-role-filter" data-account-status-filter><option value="">Any status</option><option value="active">Active</option><option value="inactive">Inactive</option></select>
     </div>
   </div>
   {% if users %}
   <div class="table-wrap"><table><thead><tr><th>User</th><th>Role</th><th>Merchant assignments</th><th>Status</th><th>Joined</th><th>Manage</th></tr></thead><tbody>
   {% for account in users %}
-    <tr data-search-row data-account-role="{{ account.role }}">
+    <tr data-search-row data-account-role="{{ account.role }}" data-account-status="{% if account.is_active %}active{% else %}inactive{% endif %}">
       <td><div class="table-user"><span class="mini-avatar">{{ account.get_full_name|slice:":1"|upper }}</span><span><strong>{{ account.get_full_name }}</strong><small>{{ account.email|default:account.username }}{% if account.mobile %} · {{ account.mobile }}{% endif %}</small></span></div></td>
       <td><span class="account-role-tag role-{{ account.role|lower }}">{{ account.get_role_display }}</span></td>
       <td>{% for assignment in account.usermerchant_set.all %}<span class="assignment-chip">{{ assignment.merchant.merchant_name }}</span><form method="post" class="inline-form">

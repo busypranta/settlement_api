@@ -9,9 +9,10 @@ from apps.accounts.models import User
 from apps.merchants.models import AdminUserAssignment, PortalMerchant, UserMerchant
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse
 from django.test import RequestFactory
 from rest_framework.test import APIClient
+from rest_framework.response import Response as DRFResponse
 
 from core.middleware import APILogMiddleware
 
@@ -135,6 +136,7 @@ class PortalAuthenticationTests(TestCase):
             content_type='application/json',
         )
         self.assertEqual(response.status_code, 400)
+        self.assertEqual(response['Content-Type'], 'application/json')
         errors = response.json()['errors']
         self.assertIn('mobile', errors)
         self.assertIn('email', errors)
@@ -146,6 +148,7 @@ class PortalAuthenticationTests(TestCase):
             content_type='application/json',
         )
         self.assertEqual(response.status_code, 400)
+        self.assertEqual(response['Content-Type'], 'application/json')
         self.assertIn('name', response.json()['errors'])
 
     def test_admin_api_account_creation_requires_valid_contact_details(self):
@@ -196,11 +199,14 @@ class ApiJsonResponseMiddlewareTests(TestCase):
 
     def test_api_json_responses_are_not_rewritten(self):
         request = RequestFactory().post('/v1/api/settlement-report/merchant')
-        middleware = APILogMiddleware(lambda request: JsonResponse({'success': True, 'data': []}))
+        api_response = DRFResponse({'success': True, 'data': []})
+        api_response.accepted_renderer = type('JSONRenderer', (), {'media_type': 'application/json'})()
+        middleware = APILogMiddleware(lambda request: api_response)
         with patch('core.middleware.ApiLog.objects.create'):
             response = middleware(request)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(json.loads(response.content), {'success': True, 'data': []})
+        self.assertIs(response, api_response)
+        self.assertEqual(response.data, {'success': True, 'data': []})
 
 
 class PortalVisibilityTests(TestCase):
@@ -258,6 +264,11 @@ class PortalVisibilityTests(TestCase):
         self.assertContains(playground, self.merchant.merchant_uid)
         self.assertNotContains(playground, self.other_merchant.merchant_uid)
         self.assertContains(playground, '/api/auth/token/')
+        self.assertContains(playground, 'merchant-picker-search')
+        self.assertContains(playground, 'merchant-picker-option')
+        self.assertContains(playground, 'merchant-picker-trigger')
+        self.assertContains(playground, 'merchant-picker-panel')
+        self.assertNotContains(playground, '<select id="playground-merchants"')
 
     def test_authenticated_workspace_pages_render(self):
         self.client.force_login(self.user)
@@ -374,6 +385,13 @@ class PortalVisibilityTests(TestCase):
             role=User.ROLE_ADMIN,
         )
         self.client.force_login(superadmin)
+        directory_response = self.client.get(reverse('portal-managed-accounts'))
+        self.assertContains(directory_response, 'Total accounts')
+        self.assertContains(directory_response, 'Assign users to an admin')
+        self.assertContains(directory_response, 'data-account-status-filter')
+        self.assertContains(directory_response, 'ADMIN SCOPE DIRECTORY')
+        self.assertContains(directory_response, 'account-role-filter')
+
         response = self.client.post(reverse('portal-managed-accounts'), {
             'action': 'assign_admin_user',
             'admin': admin.pk,

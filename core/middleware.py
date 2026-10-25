@@ -35,7 +35,10 @@ class APILogMiddleware:
                     },
                     status=500,
                 )
-            content_type = response.get('Content-Type', '').split(';', 1)[0].lower()
+            renderer_media_type = getattr(getattr(response, 'accepted_renderer', None), 'media_type', '')
+            content_type = (
+                renderer_media_type or response.get('Content-Type', '')
+            ).split(';', 1)[0].lower()
             if not content_type.endswith('/json') and '+json' not in content_type:
                 status_code = response.status_code
                 if status_code < 400:
