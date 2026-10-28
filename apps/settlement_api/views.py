@@ -4,10 +4,16 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.accounts.models import User
 from apps.merchants.models import PortalMerchant
 from .permissions import merchant_is_allowed
-from .serializers import DateRangeSerializer, MultiMerchantReportSerializer, PageNumberSerializer
-from .services import compute_settlement_for_merchant
+from .serializers import (
+    DateRangeSerializer,
+    MultiMerchantReportSerializer,
+    PageNumberSerializer,
+    SettlementReportDateRangeSerializer,
+)
+from .services import approved_settlement_batch_ids_for_merchant, compute_settlement_for_merchant
 from .source_models import OwnTransaction
 
 
@@ -15,6 +21,11 @@ class SettlementReportMultiView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        if request.user.role == User.ROLE_USER and not request.user.allow_multiple_merchants:
+            return Response(
+                {'success': False, 'error': 'Multiple-merchant API access is not enabled for this account'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         serializer = MultiMerchantReportSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
@@ -51,28 +62,22 @@ class SettlementReportSingleView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, merchant_uid):
-        try:
-            serializer = DateRangeSerializer(data=request.data)
-            serializer.is_valid(raise_exception=True)
-            data = serializer.validated_data
-            merchant = get_object_or_404(PortalMerchant, merchant_uid=merchant_uid, is_active=True)
-            if not merchant_is_allowed(request.user, merchant):
-                return Response(
-                    {'success': False, 'error': 'Not authorized for this merchant'},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
-            return Response({'success': True, 'data': [{
-                'merchant_uid': merchant.merchant_uid,
-                'merchant_name': merchant.merchant_name,
-                'settlements': compute_settlement_for_merchant(
-                    merchant, data['from_date'], data['to_date'],
-                ),
-            }]})
-        except Exception as e:
+        serializer = SettlementReportDateRangeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        merchant = get_object_or_404(PortalMerchant, merchant_uid=merchant_uid, is_active=True)
+        if not merchant_is_allowed(request.user, merchant):
             return Response(
-                {'success': False, 'error': str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                {'success': False, 'error': 'Not authorized for this merchant'},
+                status=status.HTTP_403_FORBIDDEN,
             )
+        return Response({'success': True, 'data': [{
+            'merchant_uid': merchant.merchant_uid,
+            'merchant_name': merchant.merchant_name,
+            'settlements': compute_settlement_for_merchant(
+                merchant, data['from_date'], data['to_date'],
+            ),
+        }]})
 
 
 class SettlementTransactionsView(APIView):
@@ -109,16 +114,19 @@ class SettlementTransactionsView(APIView):
             )
         page_size = 200
         total_pages = (total_records + page_size - 1) // page_size
-        transactions = queryset[(page - 1) * page_size:page * page_size]
+        transactions = list(queryset[(page - 1) * page_size:page * page_size])
+        approved_batch_ids = approved_settlement_batch_ids_for_merchant(
+            merchant,
+            {transaction.settlement_batch_id for transaction in transactions},
+        )
 
         results = []
         for transaction in transactions:
             amount = transaction.merchant_amount
-            source_status = (transaction.status or '').upper()
             results.append({
                 'date': transaction.txn_datetime.strftime('%d-%m-%Y'),
                 'amount': f'{amount:.2f}' if amount is not None else None,
-                'status': 'SUCCESS' if source_status == 'SUCCESS' else 'PENDING',
+                'status': 'SUCCESS' if transaction.settlement_batch_id in approved_batch_ids else 'PENDING',
             })
         return Response({
             'success': True,

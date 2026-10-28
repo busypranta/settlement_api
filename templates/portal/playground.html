@@ -22,22 +22,25 @@
       </div>
       {% if playground_merchants %}
         <form id="playground-form" class="playground-form" data-api-username="{{ user.username }}">
-          <div class="form-field">
-            <label for="playground-endpoint">API endpoint</label><select id="playground-endpoint" class="form-control">
-              <option value="report">Settlement report · one merchant</option>
-              <option value="transactions">Settlement transactions</option>
-              <option value="multi-report">Settlement report · multiple merchants</option>
-            </select>
+          <div style="display: flex; gap: 1rem;">
+            <div class="form-field">
+              <label for="playground-endpoint">API endpoint</label><select id="playground-endpoint" class="form-control">
+                <option value="report">Settlement Report</option>
+                <option value="transactions">Transactions</option>
+                {% if can_use_multi_merchant_api %}<option value="multi-report">Settlement Report · Multiple</option>{% endif %}
+              </select>
+            </div>
+
+            <div class="form-field" id="single-merchant-field">
+              <label for="playground-merchant">Merchant</label><select id="playground-merchant" class="form-control">
+                {% for merchant in playground_merchants %}
+                  <option value="{{ merchant.merchant_uid }}">{{ merchant.merchant_name }} · {{ merchant.merchant_uid }}</option>
+                {% endfor %}
+              </select>
+            </div>
           </div>
           <div class="playground-route">
             <span>POST</span><code id="playground-route">/v1/api/settlement-report/{merchant_uid}</code>
-          </div>
-          <div class="form-field" id="single-merchant-field">
-            <label for="playground-merchant">Merchant</label><select id="playground-merchant" class="form-control">
-              {% for merchant in playground_merchants %}
-                <option value="{{ merchant.merchant_uid }}">{{ merchant.merchant_name }} · {{ merchant.merchant_uid }}</option>
-              {% endfor %}
-            </select>
           </div>
           <fieldset class="form-field multi-merchant-field" id="multi-merchant-field" hidden>
             <legend>Merchants</legend>
@@ -251,10 +254,6 @@
         if (!form.reportValidity()) return
         const from = document.getElementById('playground-from').value
         const to = document.getElementById('playground-to').value
-        if (from > to) {
-          showResponse('The start date must be on or before the end date.', 'Check input')
-          return
-        }
         const selectedMerchants = endpoint.value === 'multi-report' ? Array.from(merchantPicker.querySelectorAll('input:checked'), (input) => input.value) : []
         if (endpoint.value === 'multi-report' && selectedMerchants.length === 0) {
           showResponse('Select at least one merchant for a multi-merchant request.', 'Check input')

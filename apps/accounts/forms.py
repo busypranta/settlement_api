@@ -16,6 +16,7 @@ class UserCreateForm(forms.ModelForm):
             'data-password-strength': 'true',
             'minlength': '8',
             'maxlength': '16',
+            'data-password-toggle': 'true',
         }),
         help_text='Use 8–16 characters. Combine upper- and lowercase letters, numbers, and a symbol. Avoid personal details.',
     )
@@ -85,6 +86,7 @@ class AdminPasswordResetForm(forms.Form):
             'class': 'form-control',
             'data-password-strength': 'true',
             'maxlength': '16',
+            'data-password-toggle': 'true',
         }),
         help_text='Use 8–16 characters with a mix of letters, numbers, and symbols.',
     )
@@ -122,8 +124,14 @@ class MerchantAssignmentForm(forms.Form):
         self.fields['user'].queryset = users.filter(role=User.ROLE_USER).order_by('username')
         merchant_queryset = merchants if merchants is not None else PortalMerchant.objects.all()
         self.fields['merchant'].queryset = merchant_queryset.filter(is_active=True).order_by('merchant_name')
-        self.fields['user'].widget.attrs['class'] = 'form-control'
-        self.fields['merchant'].widget.attrs['class'] = 'form-control'
+        self.fields['user'].widget.attrs.update({
+            'class': 'form-control',
+            'data-searchable-select': 'true',
+        })
+        self.fields['merchant'].widget.attrs.update({
+            'class': 'form-control',
+            'data-searchable-select': 'true',
+        })
 
 
 class AdminUserAssignmentForm(forms.Form):
@@ -136,6 +144,7 @@ class AdminUserAssignmentForm(forms.Form):
         self.fields['user'].queryset = User.objects.filter(role=User.ROLE_USER).order_by('username')
         for field in self.fields.values():
             field.widget.attrs['class'] = 'form-control'
+            field.widget.attrs['data-searchable-select'] = 'true'
 
 
 class ProfileForm(forms.ModelForm):
@@ -179,7 +188,7 @@ class ProfileForm(forms.ModelForm):
 class PortalPasswordChangeForm(PasswordChangeForm):
     old_password = forms.CharField(
         label='Current password',
-        widget=forms.PasswordInput(attrs={'autocomplete': 'current-password'}),
+        widget=forms.PasswordInput(attrs={'autocomplete': 'current-password', 'data-password-toggle': 'true'}),
     )
     new_password1 = forms.CharField(
         label='New password',
@@ -189,6 +198,7 @@ class PortalPasswordChangeForm(PasswordChangeForm):
             'data-password-strength': 'true',
             'minlength': '8',
             'maxlength': '16',
+            'data-password-toggle': 'true',
         }),
         help_text='Use 8–16 characters. Avoid reused passwords and personal details.',
         strip=False,
@@ -196,6 +206,6 @@ class PortalPasswordChangeForm(PasswordChangeForm):
     new_password2 = forms.CharField(
         label='Confirm new password',
         max_length=16,
-        widget=forms.PasswordInput(attrs={'autocomplete': 'new-password', 'minlength': '8', 'maxlength': '16'}),
+        widget=forms.PasswordInput(attrs={'autocomplete': 'new-password', 'minlength': '8', 'maxlength': '16', 'data-password-toggle': 'true'}),
         strip=False,
     )

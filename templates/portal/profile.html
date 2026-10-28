@@ -49,16 +49,24 @@
           <div class="form-field">
             <label for="{{ field.id_for_label }}">{{ field.label }}</label>{% if field.name == 'new_password1' %}
               <div class="password-input-row">
-                {{ field }}<div class="password-strength" data-strength-for="{{ field.id_for_label }}" aria-live="polite">
+                <div class="password-field-wrap">
+                  {{ field }}
+                  <button class="password-toggle" type="button" aria-label="Show password" data-target="{{ field.id_for_label }}">👁</button>
+                </div>
+                <div class="password-strength" data-strength-for="{{ field.id_for_label }}" aria-live="polite">
                   <div class="strength-track">
                     <span></span><span></span><span></span><span></span>
                   </div><span class="strength-label">8–16 characters <strong>Not entered</strong></span>
                 </div>
               </div>
+            {% elif field.name == 'new_password2' or field.name == 'old_password' %}
+              <div class="password-field-wrap">
+                {{ field }}
+                <button class="password-toggle" type="button" aria-label="Show password" data-target="{{ field.id_for_label }}">👁</button>
+              </div>
             {% else %}
               {{ field }}
-            {% endif %}
-            {% if field.help_text %}
+            {% endif %}            {% if field.help_text %}
               <div class="password-hint">{{ field.help_text }}</div>
             {% endif %}
             {% for error in field.errors %}

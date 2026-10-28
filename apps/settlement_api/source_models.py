@@ -92,6 +92,7 @@ class SettlementLine(models.Model):
     amount = models.DecimalField(max_digits=18, decimal_places=2)
     ft_status = models.CharField(max_length=20, blank=True, default='')
     status = models.CharField(max_length=20, blank=True, default='')
+    approved_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField()
 
     class Meta:

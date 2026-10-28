@@ -1,0 +1,45 @@
+{% extends "portal/base.html" %}
+{% block title %}Create account{% endblock %}
+{% block breadcrumb %}<a href="{% url 'portal-managed-accounts' %}">Accounts</a> <b>/</b> Create account{% endblock %}
+{% block content %}
+<div class="page-heading heading-with-action create-account-heading">
+  <div>
+    <div class="eyebrow light-eyebrow"><span class="eyebrow-dot"></span> ACCESS ADMINISTRATION</div>
+    <h1>Create an account</h1>
+    <p class="muted">Add a user or administrator account.</p>
+  </div>
+  <a class="button button-soft" href="{% url 'portal-managed-accounts' %}">Back to accounts</a>
+</div>
+<section class="panel create-account-panel">
+  <form method="post" class="admin-form create-account-form">
+    {% csrf_token %}
+    {{ user_form.non_field_errors }}
+    {% for field in user_form %}
+      <div class="form-field {% if field.name == 'password' %}create-account-password-field{% endif %}">
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {% if field.name == 'password' %}
+          <div class="password-input-row">
+            <div class="password-field-wrap">
+              {{ field }}
+              <button class="password-toggle" type="button" aria-label="Show password" data-target="{{ field.id_for_label }}">👁</button>
+            </div>
+            <div class="password-strength" data-strength-for="{{ field.id_for_label }}" aria-live="polite">
+              <div class="strength-track"><span></span><span></span><span></span><span></span></div>
+              <span class="strength-label">8–16 characters <strong>Not entered</strong></span>
+            </div>
+          </div>
+        {% else %}
+          {{ field }}
+        {% endif %}
+        {% if field.name == 'mobile' %}<div class="field-help">Bangladesh number: 01XXXXXXXXX or +8801XXXXXXXXX.</div>{% endif %}
+        {% if field.name == 'password' %}<div class="password-hint">8–16 characters; use mixed case, numbers, and a symbol.</div>{% endif %}
+        {% for error in field.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+      </div>
+    {% endfor %}
+    <div class="create-account-actions">
+      <a class="button button-soft" href="{% url 'portal-managed-accounts' %}">Cancel</a>
+      <button class="button button-primary" type="submit">Create account <span>→</span></button>
+    </div>
+  </form>
+</section>
+{% endblock %}

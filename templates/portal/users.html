@@ -2,50 +2,30 @@
 {% block title %}Managed accounts{% endblock %}
 {% block breadcrumb %}Accounts{% endblock %}
 {% block content %}
-<div class="page-heading">
+<div class="page-heading heading-with-action">
   <div>
     <div class="eyebrow light-eyebrow"><span class="eyebrow-dot"></span> ACCESS ADMINISTRATION</div>
     <h1>{% if is_superadmin %}Global account management{% else %}Managed accounts{% endif %}</h1>
     <p class="muted">{% if is_superadmin %}Manage portal users and admin access across the organization.{% else %}Create and manage users in your scope only.{% endif %}</p>
   </div>
+  <a class="button button-primary" href="{% url 'portal-create-account' %}">Create an account <span>→</span></a>
 </div>
 
-{% if is_superadmin %}
-<div class="account-overview-grid">
-  <article class="account-overview-card"><span>Total accounts</span><strong>{{ account_count }}</strong><small>Across all portal roles</small></article>
-  <article class="account-overview-card"><span>Administrators</span><strong>{{ admin_count }}</strong><small>Admin workspaces</small></article>
-  <article class="account-overview-card"><span>Merchant users</span><strong>{{ user_count }}</strong><small>Business API accounts</small></article>
-  <article class="account-overview-card"><span>Inactive</span><strong>{{ inactive_count }}</strong><small>Access currently disabled</small></article>
-</div>
-{% endif %}
-
-<div class="admin-tools-grid">
-  <section class="panel admin-form-panel">
-    <div class="panel-heading"><div><span class="section-kicker">{% if is_superadmin %}GLOBAL DIRECTORY{% else %}YOUR WORKSPACE{% endif %}</span><h2>Create an account</h2><p>New users can sign in to both the portal and API.</p></div><span class="stat-icon icon-violet">♙</span></div>
-    <form method="post" class="admin-form">
-      {% csrf_token %}<input type="hidden" name="action" value="create_user">
-      {{ user_form.non_field_errors }}
-      {% for field in user_form %}
-      <div class="form-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{% if field.name == 'password' %}<div class="password-input-row">{{ field }}<div class="password-strength" data-strength-for="{{ field.id_for_label }}" aria-live="polite"><div class="strength-track"><span></span><span></span><span></span><span></span></div><span class="strength-label">8–16 characters <strong>Not entered</strong></span></div></div>{% else %}{{ field }}{% endif %}{% if field.name == 'mobile' %}<div class="field-help">Bangladesh mobile: 01XXXXXXXXX or +8801XXXXXXXXX.</div>{% endif %}{% if field.help_text %}<div class="password-hint">{{ field.help_text }}</div>{% endif %}{% for error in field.errors %}<span class="field-error">{{ error }}</span>{% endfor %}</div>
-      {% endfor %}
-      <button class="button button-primary" type="submit">Create account <span>→</span></button>
-    </form>
-  </section>
-
+<div class="admin-tools-grid {% if not is_superadmin %}single-admin-tool{% endif %}">
   {% if is_superadmin %}
   <section class="panel admin-form-panel">
-    <div class="panel-heading"><div><span class="section-kicker">SCOPE CONTROL</span><h2>Assign users to an admin</h2><p>Grant an admin visibility of a specific user account.</p></div><span class="stat-icon icon-teal">⇄</span></div>
+    <div class="panel-heading"><div><span class="section-kicker">SCOPE CONTROL</span><h2>Assign users to an admin</h2><p>Select an administrator and a user to grant management visibility. Assignments are listed below and can be removed there.</p></div><span class="stat-icon icon-teal">⇄</span></div>
     <form method="post" class="admin-form">
       {% csrf_token %}<input type="hidden" name="action" value="assign_admin_user">
       {% for field in admin_assignment_form %}
-      <div class="form-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<span class="field-error">{{ error }}</span>{% endfor %}</div>
+      <div class="form-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.name == 'admin' %}<div class="field-help">The selected admin can manage this account and its assigned merchants.</div>{% endif %}{% for error in field.errors %}<span class="field-error">{{ error }}</span>{% endfor %}</div>
       {% endfor %}
       <button class="button button-dark" type="submit">Save admin scope <span>→</span></button>
     </form>
   </section>
-  {% else %}
+  {% endif %}
   <section class="panel admin-form-panel">
-    <div class="panel-heading"><div><span class="section-kicker">MERCHANT ACCESS</span><h2>Assign a merchant</h2><p>Grant an active merchant to a user you manage.</p></div><span class="stat-icon icon-teal">◈</span></div>
+    <div class="panel-heading"><div><span class="section-kicker">MERCHANT ACCESS</span><h2>Grant merchant access</h2><p>Assign an active merchant to a user in your management scope.</p></div><span class="stat-icon icon-teal">◈</span></div>
     <form method="post" class="admin-form">
       {% csrf_token %}<input type="hidden" name="action" value="assign_merchant">
       {{ merchant_assignment_form.non_field_errors }}
@@ -55,36 +35,19 @@
       <button class="button button-dark" type="submit">Grant merchant access <span>→</span></button>
     </form>
   </section>
-  {% endif %}
 </div>
 
 {% if is_superadmin %}
-<details class="admin-advanced-tools" {% if show_merchant_tools %}open{% endif %}>
-  <summary><span><strong>Merchant assignments</strong><small>Grant merchant access or manage current administrator scopes</small></span><span class="advanced-chevron">⌄</span></summary>
-  <div class="advanced-tools-content">
-    <section class="panel admin-form-panel">
-      <div class="panel-heading"><div><span class="section-kicker">MERCHANT ACCESS</span><h2>Assign a merchant</h2><p>Grant an active merchant to a user account.</p></div><span class="stat-icon icon-teal">◈</span></div>
-      <form method="post" class="admin-form">
-        {% csrf_token %}<input type="hidden" name="action" value="assign_merchant">
-        {{ merchant_assignment_form.non_field_errors }}
-        {% for field in merchant_assignment_form %}
-        <div class="form-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<span class="field-error">{{ error }}</span>{% endfor %}</div>
-        {% endfor %}
-        <button class="button button-dark" type="submit">Grant merchant access <span>→</span></button>
-      </form>
-    </section>
-  </div>
-</details>
 <section class="panel assignment-admin-panel">
-  <div class="panel-heading"><div><span class="section-kicker">ADMIN SCOPE DIRECTORY</span><h2>Assigned account access</h2><p>Review which users each administrator can manage.</p></div><span class="scope-count">{{ admin_assignments|length }} assignment{{ admin_assignments|length|pluralize }}</span></div>
+  <div class="panel-heading"><div><span class="section-kicker">ADMIN SCOPE DIRECTORY</span><h2>Assigned account access</h2><p>Review which users each administrator can manage. Users created by an admin are also included automatically.</p></div><div class="admin-scope-controls"><label class="search-box"><span>⌕</span><input data-admin-scope-search type="search" placeholder="Search admins and users"></label><span class="scope-count">{{ admin_assignments|length }} assignment{{ admin_assignments|length|pluralize }}</span></div></div>
   {% if admin_assignments %}
   <div class="assignment-directory">
     {% for assignment in admin_assignments %}
-    <div class="assignment-entry">
+    <div class="assignment-entry" data-admin-scope-row>
       <div class="scope-admin"><span class="scope-avatar">{{ assignment.admin.get_full_name|slice:":1"|upper }}</span><span><strong>{{ assignment.admin.get_full_name }}</strong><small>{{ assignment.admin.email|default:assignment.admin.username }}</small></span></div>
       <span class="assignment-arrow">→</span>
       <div class="scope-user"><span class="scope-avatar">{{ assignment.user.get_full_name|slice:":1"|upper }}</span><span><strong>{{ assignment.user.get_full_name }}</strong><small>{{ assignment.user.email|default:assignment.user.username }}</small></span></div>
-      <form method="post">
+      <form method="post" data-confirm="Remove {{ assignment.user.username }} from {{ assignment.admin.username }}'s admin scope?">
         {% csrf_token %}<input type="hidden" name="action" value="unassign_admin_user">
         <input type="hidden" name="admin" value="{{ assignment.admin_id }}"><input type="hidden" name="user" value="{{ assignment.user_id }}">
         <button class="button button-small button-danger" type="submit">Remove</button>
@@ -98,45 +61,73 @@
 </section>
 {% endif %}
 
-<section class="panel full-panel managed-panel">
+<section class="panel full-panel managed-panel" id="account-directory">
   <div class="panel-heading">
-    <div><span class="section-kicker">{% if is_superadmin %}ORGANIZATION{% else %}YOUR SCOPE{% endif %}</span><h2>{% if is_superadmin %}All portal accounts{% else %}Users in your scope{% endif %}</h2><p>{{ users|length }} account{{ users|length|pluralize }}{% if not is_superadmin %} created by you or explicitly assigned to you{% endif %}</p></div>
-    <div class="account-directory-controls">
-      <label class="search-box"><span>⌕</span><input data-table-search type="search" placeholder="Search accounts"></label>
-      {% if is_superadmin %}<label class="visually-hidden" for="account-role-filter">Filter by role</label><select id="account-role-filter" class="account-role-filter" data-account-role-filter><option value="">All roles</option><option value="ADMIN">Admins</option><option value="USER">Users</option><option value="SUPERADMIN">Super admins</option></select>{% endif %}
-      <label class="visually-hidden" for="account-status-filter">Filter by status</label><select id="account-status-filter" class="account-role-filter" data-account-status-filter><option value="">Any status</option><option value="active">Active</option><option value="inactive">Inactive</option></select>
-    </div>
+    <div><span class="section-kicker">{% if is_superadmin %}ORGANIZATION{% else %}YOUR SCOPE{% endif %}</span><h2>{% if is_superadmin %}All portal accounts{% else %}Users in your scope{% endif %}</h2><p>{{ page_obj.paginator.count }} account{{ page_obj.paginator.count|pluralize }}{% if not is_superadmin %} created by you or explicitly assigned to you{% endif %}</p></div>
+    <form method="get" class="account-directory-controls">
+      <label class="search-box"><span>⌕</span><input name="q" type="search" placeholder="Search name, username, email or mobile" value="{{ query }}"></label>
+      {% if is_superadmin %}<label class="visually-hidden" for="account-role-filter">Filter by role</label><select id="account-role-filter" class="account-role-filter" name="role"><option value="">All roles</option><option value="ADMIN" {% if role_filter == 'ADMIN' %}selected{% endif %}>Admins</option><option value="USER" {% if role_filter == 'USER' %}selected{% endif %}>Users</option><option value="SUPERADMIN" {% if role_filter == 'SUPERADMIN' %}selected{% endif %}>Super admins</option></select>{% endif %}
+      <label class="visually-hidden" for="account-status-filter">Filter by status</label><select id="account-status-filter" class="account-role-filter" name="status"><option value="">Any status</option><option value="active" {% if status_filter == 'active' %}selected{% endif %}>Active</option><option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>Inactive</option></select>
+      <button class="button button-dark" type="submit">Apply filters</button>
+    </form>
   </div>
   {% if users %}
-  <div class="table-wrap"><table><thead><tr><th>User</th><th>Role</th><th>Merchant assignments</th><th>Status</th><th>Joined</th><th>Manage</th></tr></thead><tbody>
+  <div class="table-wrap"><table><thead><tr><th>User</th><th>Role</th><th>Merchant assignments</th><th>Multiple-merchant API</th><th>Status</th><th>Joined</th><th>Manage</th></tr></thead><tbody>
   {% for account in users %}
-    <tr data-search-row data-account-role="{{ account.role }}" data-account-status="{% if account.is_active %}active{% else %}inactive{% endif %}">
+    <tr>
       <td><div class="table-user"><span class="mini-avatar">{{ account.get_full_name|slice:":1"|upper }}</span><span><strong>{{ account.get_full_name }}</strong><small>{{ account.email|default:account.username }}{% if account.mobile %} · {{ account.mobile }}{% endif %}</small></span></div></td>
       <td><span class="account-role-tag role-{{ account.role|lower }}">{{ account.get_role_display }}</span></td>
-      <td>{% for assignment in account.usermerchant_set.all %}<span class="assignment-chip">{{ assignment.merchant.merchant_name }}</span><form method="post" class="inline-form">
+      <td><div class="user-merchant-list">{% for assignment in account.usermerchant_set.all %}<span class="user-merchant-entry"><span class="assignment-chip">{{ assignment.merchant.merchant_name }}</span><code>{{ assignment.merchant.merchant_uid }}</code><form method="post" class="inline-form" data-confirm="Remove {{ assignment.merchant.merchant_name }} access from {{ account.username }}?">
         {% csrf_token %}<input type="hidden" name="action" value="unassign_merchant"><input type="hidden" name="user_id" value="{{ account.id }}"><input type="hidden" name="assignment_id" value="{{ assignment.id }}">
         <button class="remove-chip" type="submit" title="Remove merchant access" aria-label="Remove {{ assignment.merchant.merchant_name }}">×</button>
-      </form>{% empty %}<span class="table-secondary">No assignments</span>{% endfor %}</td>
+      </form></span>{% empty %}<span class="table-secondary">No merchant access</span>{% endfor %}</div></td>
+      <td>{% if account.role == 'USER' %}
+        <form method="post" class="access-toggle-form" data-confirm="{% if account.allow_multiple_merchants %}Disable{% else %}Enable{% endif %} multi-merchant API access for {{ account.username }}?">
+          {% csrf_token %}<input type="hidden" name="action" value="toggle_multi_merchant_access"><input type="hidden" name="user_id" value="{{ account.id }}">
+          <button class="access-toggle {% if account.allow_multiple_merchants %}enabled{% endif %}" type="submit" aria-label="{% if account.allow_multiple_merchants %}Disable{% else %}Enable{% endif %} multi-merchant API access for {{ account.username }}">
+            {% if account.allow_multiple_merchants %}Enabled{% else %}Disabled{% endif %}
+          </button>
+        </form>
+      {% else %}<span class="table-secondary">Not applicable</span>{% endif %}</td>
       <td><span class="status-pill {% if account.is_active %}status-ok{% else %}status-muted{% endif %}"><i></i>{% if account.is_active %}Active{% else %}Inactive{% endif %}</span></td>
       <td class="table-secondary">{{ account.date_joined|date:"M j, Y" }}</td>
       <td><div class="account-actions">{% if account.role != 'SUPERADMIN' %}
-        <form method="post">{% csrf_token %}<input type="hidden" name="action" value="toggle_user"><input type="hidden" name="user_id" value="{{ account.id }}">
+        <form method="post" data-confirm="{% if account.is_active %}Deactivate{% else %}Activate{% endif %} {{ account.username }}?">
+          {% csrf_token %}<input type="hidden" name="action" value="toggle_user"><input type="hidden" name="user_id" value="{{ account.id }}">
           <button class="button button-small {% if account.is_active %}button-danger{% else %}button-soft{% endif %}" type="submit">{% if account.is_active %}Deactivate{% else %}Activate{% endif %}</button>
         </form>
-        <details class="reset-inline"><summary>Reset password</summary><form method="post" class="reset-form">
-          {% csrf_token %}<input type="hidden" name="action" value="reset_password"><input type="hidden" name="user_id" value="{{ account.id }}">
-          <label class="visually-hidden" for="reset-password-{{ account.id }}">Temporary password for {{ account.username }}</label>
-          <input id="reset-password-{{ account.id }}" type="password" name="password" minlength="8" maxlength="16" autocomplete="new-password" placeholder="Temporary password" data-password-strength="true" required>
-          <div class="password-strength" data-strength-for="reset-password-{{ account.id }}" aria-live="polite"><div class="strength-track"><span></span><span></span><span></span><span></span></div><span class="strength-label">8–16 characters <strong>Not entered</strong></span></div>
-          <small class="password-hint">Mix upper/lowercase letters, numbers, and symbols. Avoid names and reused passwords.</small>
-          <button class="button button-small button-dark" type="submit">Set</button>
-        </form></details>
+        <button class="button button-small button-soft" type="button" data-open-reset data-user-id="{{ account.id }}" data-username="{{ account.username }}">Reset password</button>
       {% else %}<span class="table-secondary">Protected</span>{% endif %}</div></td>
     </tr>
   {% endfor %}
   </tbody></table></div>
+  {% if page_obj.paginator.num_pages > 1 %}
+  <nav class="pagination-controls" aria-label="Account pages">
+    {% if page_obj.has_previous %}<a class="button button-soft" href="?q={{ query|urlencode }}&amp;role={{ role_filter|urlencode }}&amp;status={{ status_filter|urlencode }}&amp;page={{ page_obj.previous_page_number }}">Previous</a>{% else %}<span></span>{% endif %}
+    <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }} · {{ page_obj.paginator.count }} matching accounts</span>
+    {% if page_obj.has_next %}<a class="button button-soft" href="?q={{ query|urlencode }}&amp;role={{ role_filter|urlencode }}&amp;status={{ status_filter|urlencode }}&amp;page={{ page_obj.next_page_number }}">Next</a>{% else %}<span></span>{% endif %}
+  </nav>
+  {% endif %}
   {% else %}
-  <div class="empty-state"><strong>No users in your scope yet</strong><p>Create a user above or ask a SUPERADMIN to assign one to you.</p></div>
+  <div class="empty-state"><strong>No accounts match these filters</strong><p>Adjust your search or filters, or create a new account.</p><a class="button button-primary" href="{% url 'portal-create-account' %}">Create an account <span>→</span></a></div>
   {% endif %}
 </section>
+<dialog class="reset-password-dialog" id="reset-password-dialog" aria-labelledby="reset-dialog-title">
+  <form method="post" class="reset-dialog-form" data-confirm="Set a new temporary password for this account?">
+    {% csrf_token %}<input type="hidden" name="action" value="reset_password"><input type="hidden" name="user_id" id="reset-user-id">
+    <div class="panel-heading">
+      <div>
+        <h2 id="reset-dialog-title">Reset password</h2>
+        <p id="reset-dialog-copy">Set a temporary password for this account.</p>
+      </div>
+      <button class="dialog-close" type="button" data-close-reset aria-label="Close">×</button>
+    </div>
+    <div class="reset-dialog-content">
+      <label for="reset-password">Temporary password</label>
+      <input id="reset-password" class="form-control" type="password" name="password" minlength="8" maxlength="16" autocomplete="new-password" data-password-strength="true" required>
+      <div class="password-strength" data-strength-for="reset-password" aria-live="polite"><div class="strength-track"><span></span><span></span><span></span><span></span></div><span class="strength-label">8–16 characters <strong>Not entered</strong></span></div>      
+    </div>
+    <div class="reset-dialog-actions"><button class="button button-soft" type="button" data-close-reset>Cancel</button><button class="button button-primary" type="submit">Set temporary password</button></div>
+  </form>
+</dialog>
 {% endblock %}

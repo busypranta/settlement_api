@@ -114,8 +114,13 @@ def api_playground(request):
         for merchant in scoped_merchants(request.user).filter(is_active=True).order_by('merchant_name')
         if merchant_is_allowed(request.user, merchant)
     ]
+    can_use_multi_merchant_api = (
+        request.user.role != User.ROLE_USER
+        or request.user.allow_multiple_merchants
+    )
     return render(request, 'portal/playground.html', {
         'playground_merchants': merchants,
+        'can_use_multi_merchant_api': can_use_multi_merchant_api and len(merchants) > 1,
     })
 
 @login_required
@@ -207,14 +212,55 @@ def merchant_access(request):
 
 
 @login_required
+def create_account(request):
+    if request.user.role not in (User.ROLE_ADMIN, User.ROLE_SUPERADMIN) and not request.user.is_superuser:
+        messages.error(request, 'Account administration is available to admins only.')
+        return redirect('portal-dashboard')
+
+    user_form = UserCreateForm(actor=request.user)
+    if request.method == 'POST':
+        user_form = UserCreateForm(request.POST, actor=request.user)
+        if user_form.is_valid():
+            try:
+                with transaction.atomic():
+                    account = user_form.save()
+            except IntegrityError:
+                user_form.add_error('username', 'This username is already in use.')
+            else:
+                audit_action(request, 'user.created', account, {'role': account.role})
+                messages.success(request, f'Account {account.username} was created.')
+                return redirect('portal-managed-accounts')
+    return render(request, 'portal/create_account.html', {'user_form': user_form})
+
+
+@login_required
 def managed_accounts(request):
     if request.user.role not in (User.ROLE_ADMIN, User.ROLE_SUPERADMIN) and not request.user.is_superuser:
         messages.error(request, 'Account administration is available to admins only.')
         return redirect('portal-dashboard')
-    users = scoped_users(request.user).prefetch_related('usermerchant_set__merchant').order_by('username')
-    user_form = UserCreateForm(actor=request.user)
+    all_users = scoped_users(request.user)
+    users = all_users
+    query = request.GET.get('q', '').strip()[:100]
+    role_filter = request.GET.get('role', '')
+    status_filter = request.GET.get('status', '')
+    if query:
+        users = users.filter(
+            Q(username__icontains=query)
+            | Q(name__icontains=query)
+            | Q(email__icontains=query)
+            | Q(mobile__icontains=query)
+        )
+    if role_filter in (User.ROLE_ADMIN, User.ROLE_USER, User.ROLE_SUPERADMIN):
+        users = users.filter(role=role_filter)
+    if status_filter == 'active':
+        users = users.filter(is_active=True)
+    elif status_filter == 'inactive':
+        users = users.filter(is_active=False)
+    users = users.prefetch_related('usermerchant_set__merchant').order_by('username')
+    page_obj = Paginator(users, 25).get_page(request.GET.get('page'))
+
     merchant_assignment_form = MerchantAssignmentForm(
-        users=users,
+        users=all_users,
         merchants=scoped_merchants(request.user),
     )
     is_superadmin = request.user.role == User.ROLE_SUPERADMIN or request.user.is_superuser
@@ -223,20 +269,7 @@ def managed_accounts(request):
 
     if request.method == 'POST':
         action = request.POST.get('action')
-        if action == 'create_user':
-            user_form = UserCreateForm(request.POST, actor=request.user)
-            if user_form.is_valid():
-                try:
-                    with transaction.atomic():
-                        account = user_form.save()
-                except IntegrityError:
-                    user_form.add_error('username', 'This username is already in use.')
-                else:
-                    audit_action(request, 'user.created', account, {'role': account.role})
-                    messages.success(request, f'Account {account.username} was created.')
-                    return redirect('portal-managed-accounts')
-
-        elif action == 'toggle_user':
+        if action == 'toggle_user':
             account = User.objects.filter(pk=request.POST.get('user_id')).first()
             if account is None or not can_manage_user(request.user, account):
                 messages.error(request, 'That account is outside your management scope.')
@@ -247,6 +280,28 @@ def managed_accounts(request):
                 account.save(update_fields=['is_active', 'updated_at'])
                 audit_action(request, 'user.activated' if account.is_active else 'user.deactivated', account)
                 messages.success(request, f'{account.username} is now {"active" if account.is_active else "inactive"}.')
+                return redirect('portal-managed-accounts')
+
+        elif action == 'toggle_multi_merchant_access':
+            account = User.objects.filter(pk=request.POST.get('user_id')).first()
+            if (
+                account is None
+                or not can_manage_user(request.user, account)
+                or account.role != User.ROLE_USER
+            ):
+                messages.error(request, 'That account is outside your multiple-merchant access scope.')
+            else:
+                account.allow_multiple_merchants = not account.allow_multiple_merchants
+                account.save(update_fields=['allow_multiple_merchants', 'updated_at'])
+                audit_action(
+                    request,
+                    'user.multiple_merchant_access_enabled'
+                    if account.allow_multiple_merchants
+                    else 'user.multiple_merchant_access_disabled',
+                    account,
+                )
+                state = 'enabled' if account.allow_multiple_merchants else 'disabled'
+                messages.success(request, f'Multiple-merchant API access is {state} for {account.username}.')
                 return redirect('portal-managed-accounts')
 
         elif action == 'reset_password':
@@ -270,7 +325,7 @@ def managed_accounts(request):
             show_merchant_tools = is_superadmin
             merchant_assignment_form = MerchantAssignmentForm(
                 request.POST,
-                users=users,
+                users=all_users,
                 merchants=scoped_merchants(request.user),
             )
             if merchant_assignment_form.is_valid():
@@ -345,14 +400,16 @@ def managed_accounts(request):
         explicit_assignments = AdminUserAssignment.objects.select_related('admin', 'user').order_by(
             'admin__username', 'user__username',
         )
-    account_count = users.count()
     return render(request, 'portal/users.html', {
-        'users': users,
-        'account_count': account_count,
-        'admin_count': users.filter(role=User.ROLE_ADMIN).count(),
-        'user_count': users.filter(role=User.ROLE_USER).count(),
-        'inactive_count': users.filter(is_active=False).count(),
-        'user_form': user_form,
+        'users': page_obj.object_list,
+        'page_obj': page_obj,
+        'query': query,
+        'role_filter': role_filter,
+        'status_filter': status_filter,
+        'account_count': all_users.count(),
+        'admin_count': all_users.filter(role=User.ROLE_ADMIN).count(),
+        'user_count': all_users.filter(role=User.ROLE_USER).count(),
+        'inactive_count': all_users.filter(is_active=False).count(),
         'merchant_assignment_form': merchant_assignment_form,
         'is_superadmin': is_superadmin,
         'admin_assignment_form': admin_assignment_form,

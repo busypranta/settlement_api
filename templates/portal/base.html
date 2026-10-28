@@ -22,7 +22,7 @@
       <a href="{% url 'portal-api-playground' %}" class="{% if request.resolver_match.url_name == 'portal-api-playground' %}active{% endif %}"><span class="nav-icon">↳</span>API playground</a>
       {% if user.role == 'ADMIN' or user.role == 'SUPERADMIN' or user.is_superuser %}
       <div class="workspace-label nav-section-label">MANAGEMENT</div>
-      <a href="{% url 'portal-managed-accounts' %}" class="{% if request.resolver_match.url_name == 'portal-managed-accounts' %}active{% endif %}"><span class="nav-icon">♙</span>Accounts</a>
+      <a href="{% url 'portal-managed-accounts' %}" class="{% if request.resolver_match.url_name == 'portal-managed-accounts' or request.resolver_match.url_name == 'portal-create-account' %}active{% endif %}"><span class="nav-icon">♙</span>Accounts</a>
       {% endif %}
       <a href="{% url 'portal-profile-page' %}" class="{% if request.resolver_match.url_name == 'portal-profile-page' %}active{% endif %}"><span class="nav-icon">⚙</span>Profile & security</a>
     </nav>
@@ -62,23 +62,225 @@
     </section>
     <footer class="page-footer"><span>© {% now "Y" %} Settlement Portal</span><span>merchant settlement workspace</span></footer>
   </main>
+  <dialog class="confirm-action-dialog" id="confirm-action-dialog" aria-labelledby="confirm-action-title">
+    <div class="confirm-action-content">
+      <div class="panel-heading">
+        <div><span class="section-kicker">PLEASE CONFIRM</span><h2 id="confirm-action-title">Confirm this change</h2><p id="confirm-action-copy"></p></div>
+        <button class="dialog-close" type="button" data-cancel-confirm aria-label="Close">×</button>
+      </div>
+      <div class="confirm-action-buttons">
+        <button class="button button-soft" type="button" data-cancel-confirm>Cancel</button>
+        <button class="button button-danger" type="button" data-accept-confirm>Confirm</button>
+      </div>
+    </div>
+  </dialog>
   <script>
-    const search = document.querySelector('[data-table-search]');
-    const roleFilter = document.querySelector('[data-account-role-filter]');
-    const statusFilter = document.querySelector('[data-account-status-filter]');
-    const filterRows = () => {
-      const query = search ? search.value.trim().toLowerCase() : '';
-      const role = roleFilter ? roleFilter.value : '';
-      const status = statusFilter ? statusFilter.value : '';
-      document.querySelectorAll('[data-search-row]').forEach((row) => {
-        row.hidden = !row.textContent.toLowerCase().includes(query)
-          || (role !== '' && row.dataset.accountRole !== role)
-          || (status !== '' && row.dataset.accountStatus !== status);
+    const adminScopeSearch = document.querySelector('[data-admin-scope-search]');
+    if (adminScopeSearch) {
+      adminScopeSearch.addEventListener('input', () => {
+        const query = adminScopeSearch.value.trim().toLowerCase();
+        document.querySelectorAll('[data-admin-scope-row]').forEach((row) => {
+          row.hidden = !row.textContent.toLowerCase().includes(query);
+        });
       });
-    };
-    if (search) search.addEventListener('input', filterRows);
-    if (roleFilter) roleFilter.addEventListener('change', filterRows);
-    if (statusFilter) statusFilter.addEventListener('change', filterRows);
+    }
+
+    const confirmationDialog = document.getElementById('confirm-action-dialog');
+    let pendingForm = null;
+    let pendingSubmitter = null;
+    let confirmedForm = null;
+    const confirmationCopy = document.getElementById('confirm-action-copy');
+    document.querySelectorAll('form[data-confirm]').forEach((form) => {
+      form.addEventListener('submit', (event) => {
+        if (confirmedForm === form) {
+          confirmedForm = null;
+          return;
+        }
+        event.preventDefault();
+        pendingForm = form;
+        pendingSubmitter = event.submitter;
+        confirmationCopy.textContent = form.dataset.confirm;
+        confirmationDialog.showModal();
+      });
+    });
+    document.querySelectorAll('[data-cancel-confirm]').forEach((button) => {
+      button.addEventListener('click', () => {
+        pendingForm = null;
+        pendingSubmitter = null;
+        confirmationDialog.close();
+      });
+    });
+    document.querySelector('[data-accept-confirm]').addEventListener('click', () => {
+      const form = pendingForm;
+      const submitter = pendingSubmitter;
+      pendingForm = null;
+      pendingSubmitter = null;
+      confirmationDialog.close();
+      if (!form) return;
+      confirmedForm = form;
+      if (submitter) form.requestSubmit(submitter);
+      else form.requestSubmit();
+    });
+    confirmationDialog.addEventListener('click', (event) => {
+      if (event.target === confirmationDialog) {
+        pendingForm = null;
+        pendingSubmitter = null;
+        confirmationDialog.close();
+      }
+    });
+
+    document.querySelectorAll('select[data-searchable-select]').forEach((select, index) => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'searchable-select';
+      const input = document.createElement('input');
+      input.type = 'search';
+      input.className = 'form-control searchable-select-input';
+      input.id = `${select.id || `searchable-select-${index}`}-search`;
+      input.placeholder = `Search ${select.labels?.[0]?.textContent.trim() || 'options'}`;
+      input.autocomplete = 'off';
+      input.setAttribute('role', 'combobox');
+      input.setAttribute('aria-autocomplete', 'list');
+      input.setAttribute('aria-expanded', 'false');
+      input.setAttribute('aria-controls', `${input.id}-options`);
+      input.required = select.required;
+      select.required = false;
+      select.tabIndex = -1;
+      select.setAttribute('aria-hidden', 'true');
+      const label = select.labels?.[0];
+      if (label) label.htmlFor = input.id;
+      const list = document.createElement('div');
+      list.className = 'searchable-select-options';
+      list.id = `${input.id}-options`;
+      list.setAttribute('role', 'listbox');
+      list.hidden = true;
+      wrapper.append(input, list);
+      select.before(wrapper);
+      wrapper.append(select);
+
+      const options = Array.from(select.options).map((option) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'searchable-select-option';
+        button.textContent = option.textContent.trim();
+        button.dataset.value = option.value;
+        button.setAttribute('role', 'option');
+        button.setAttribute('aria-selected', String(option.selected));
+        list.append(button);
+        button.addEventListener('click', () => {
+          select.value = option.value;
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+          input.value = option.value ? button.textContent : '';
+          input.required = !option.value;
+          input.setCustomValidity('');
+          list.hidden = true;
+          input.setAttribute('aria-expanded', 'false');
+          input.blur();
+        });
+        return { button, option };
+      });
+      const closeList = () => {
+        list.hidden = true;
+        input.setAttribute('aria-expanded', 'false');
+      };
+      const openList = () => {
+        const query = input.value.toLowerCase();
+        const hasQuery = query.length > 0;
+        options.forEach(({ button }) => {
+          const match = !hasQuery || button.textContent.toLowerCase().includes(query);
+          button.hidden = !match;
+        });
+        list.hidden = false;
+        input.setAttribute('aria-expanded', 'true');
+      };
+      input.value = select.selectedOptions[0]?.value
+        ? select.selectedOptions[0].textContent.trim()
+        : '';
+      input.addEventListener('focus', () => {
+        openList();
+        if (input.value) input.select();
+      });
+      input.addEventListener('input', () => {
+        input.setCustomValidity('Choose an option from the list.');
+        openList();
+      });
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          closeList();
+          return;
+        }
+        if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          list.querySelector('.searchable-select-option:not([hidden])')?.focus();
+        }
+        if (event.key === 'Enter' && !list.hidden) {
+          const firstVisible = list.querySelector('.searchable-select-option:not([hidden])');
+          if (firstVisible && !firstVisible.matches(':focus')) {
+            event.preventDefault();
+            firstVisible.click();
+          }
+        }
+      });
+      list.addEventListener('keydown', (event) => {
+        const buttons = Array.from(list.querySelectorAll('.searchable-select-option:not([hidden])'));
+        const currentIndex = buttons.indexOf(document.activeElement);
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          event.preventDefault();
+          const direction = event.key === 'ArrowDown' ? 1 : -1;
+          buttons[(currentIndex + direction + buttons.length) % buttons.length]?.focus();
+        } else if (event.key === 'Escape') {
+          closeList();
+          input.focus();
+        } else if (event.key === 'Enter' && document.activeElement.classList.contains('searchable-select-option')) {
+          event.preventDefault();
+          document.activeElement.click();
+        }
+      });
+      document.addEventListener('click', (event) => {
+        if (!wrapper.contains(event.target)) closeList();
+      });
+      select.addEventListener('change', () => {
+        input.value = select.selectedOptions[0]?.value
+          ? select.selectedOptions[0].textContent.trim()
+          : '';
+        input.required = !select.value;
+        options.forEach(({ button, option }) => {
+          button.setAttribute('aria-selected', String(option.selected));
+        });
+      });
+    });
+
+    document.querySelectorAll('.password-toggle').forEach((toggle) => {
+      const field = document.getElementById(toggle.dataset.target);
+      if (!field) return;
+      toggle.addEventListener('click', () => {
+        const isPassword = field.type === 'password';
+        field.type = isPassword ? 'text' : 'password';
+        toggle.setAttribute('aria-label', isPassword ? 'Hide password' : 'Show password');
+        toggle.textContent = isPassword ? '🙈' : '👁';
+      });
+    });
+
+    const resetDialog = document.getElementById('reset-password-dialog');
+    if (resetDialog) {
+      const resetUserId = document.getElementById('reset-user-id');
+      const resetPassword = document.getElementById('reset-password');
+      const resetCopy = document.getElementById('reset-dialog-copy');
+      document.querySelectorAll('[data-open-reset]').forEach((button) => {
+        button.addEventListener('click', () => {
+          resetUserId.value = button.dataset.userId;
+          resetCopy.textContent = `Set a temporary password for ${button.dataset.username}.`;
+          resetPassword.value = '';
+          resetDialog.showModal();
+          resetPassword.focus();
+        });
+      });
+      document.querySelectorAll('[data-close-reset]').forEach((button) => {
+        button.addEventListener('click', () => resetDialog.close());
+      });
+      resetDialog.addEventListener('click', (event) => {
+        if (event.target === resetDialog) resetDialog.close();
+      });
+    }
 
     document.querySelectorAll('[data-password-strength]').forEach((input) => {
       const meter = document.querySelector(`[data-strength-for="${input.id}"]`);

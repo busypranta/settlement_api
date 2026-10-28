@@ -14,6 +14,8 @@ Settlement Portal is a standalone Django portal for merchant settlement API user
 - ADMIN account views scoped to users created by or explicitly assigned to that admin.
 - Admin web tools to create USER accounts, activate/deactivate scoped accounts, reset their passwords, add/deactivate merchants, and assign/unassign merchants to users in scope.
 - SUPERADMIN global account and merchant visibility, ADMIN creation, and explicit ADMIN-to-USER assignments.
+- Multiple-merchant report access is disabled for users by default; admins and superadmins can enable it per user. All merchant requests remain restricted to assigned active merchants.
+- Account administration provides a separate account-creation page, searchable/filterable paginated account lists, confirmation for access changes, and a password-reset dialog.
 - Authenticated OpenAPI/Swagger documentation at `/api/docs/`. Business API users and admins see settlement endpoints; portal-management APIs appear only in the SUPERADMIN schema.
 
 The browser portal uses Django's session authentication and CSRF protection. API endpoints continue to use JWT authentication. Access tokens are valid for two hours. The live playground requests a token with the user's portal credentials and keeps the token in page memory only.
@@ -49,3 +51,5 @@ The web container health check validates both configured database connections. A
 - Authenticated documentation: `GET /api/docs/`
 
 Browser administration is available under **Portal → Accounts** and **Portal → Merchant access**. Portal administration APIs remain available under `/api/portal/`. Admin views and actions are enforced server-side: admins can only manage users they created or were assigned, and merchant controls are limited to merchants in their own scope. SUPERADMIN has global visibility and management.
+
+Settlement report date ranges are limited to 60 calendar dates inclusive. The transaction endpoint remains paginated at 200 records per page. Transaction status is `SUCCESS` when an `APPROVED` settlement line for that merchant exists in the transaction's settlement batch; otherwise it is `PENDING`.

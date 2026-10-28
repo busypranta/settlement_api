@@ -1,5 +1,5 @@
 from decimal import Decimal
-from apps.settlement_api.source_models import Merchant, SettlementBatch, SettlementLine, SourceContentType
+from apps.settlement_api.source_models import Merchant, SettlementLine, SourceContentType
 
 def normalize_name_key(name):
     return ' '.join((name or '').strip().casefold().split())
@@ -17,6 +17,45 @@ def get_merchant_owner_from_line(line):
     return Merchant.objects.using('source').filter(pk=account.owner_id).first()
 
 
+def approved_settlement_batch_ids_for_merchant(portal_merchant, batch_ids):
+    if not batch_ids:
+        return set()
+
+    merchant_content_type_id = (
+        SourceContentType.objects.using('source')
+        .filter(app_label='merchants', model='merchant')
+        .values_list('id', flat=True)
+        .first()
+    )
+    if merchant_content_type_id is None:
+        return set()
+
+    line_data = list(
+        SettlementLine.objects.using('source')
+        .filter(
+            batch_id__in=batch_ids,
+            cr_account__owner_type_id=merchant_content_type_id,
+        )
+        .values_list('batch_id', 'status', 'cr_account__owner_id')
+    )
+    owner_ids = {owner_id for _, _, owner_id in line_data}
+    merchants_by_id = {
+        merchant.pk: merchant
+        for merchant in Merchant.objects.using('source').filter(pk__in=owner_ids)
+    }
+    merchant_name_key = normalize_name_key(portal_merchant.merchant_name)
+    approved_batch_ids = set()
+    for batch_id, line_status, owner_id in line_data:
+        owner = merchants_by_id.get(owner_id)
+        if (
+            owner is not None
+            and normalize_name_key(owner.name) == merchant_name_key
+            and (line_status or '').strip().upper() == 'APPROVED'
+        ):
+            approved_batch_ids.add(batch_id)
+    return approved_batch_ids
+
+
 def compute_settlement_for_merchant(portal_merchant, from_date, to_date):
     merchant_content_type_id = (
         SourceContentType.objects.using('source')
@@ -27,58 +66,52 @@ def compute_settlement_for_merchant(portal_merchant, from_date, to_date):
     if merchant_content_type_id is None:
         return []
 
-    batches = SettlementBatch.objects.using('source').filter(
-        date_from__lte=to_date,
-        date_to__gte=from_date,
-        status__in=('PARTIAL', 'COMPLETED'),
-    ).order_by('date_from', 'pk')
-
     merchant_name_key = normalize_name_key(portal_merchant.merchant_name)
     results = []
-    for batch in batches:
-        lines = (
-            SettlementLine.objects.using('source')
-            .filter(batch_id=batch.pk, cr_account__owner_type_id=merchant_content_type_id)
-            .select_related('cr_account')
+    lines = (
+        SettlementLine.objects.using('source')
+        .filter(
+            cr_account__owner_type_id=merchant_content_type_id,
+            batch__date_from__gte=from_date,
+            batch__date_from__lte=to_date,
         )
-        owner_ids = {line.cr_account.owner_id for line in lines}
-        merchants_by_id = {
-            merchant.pk: merchant
-            for merchant in Merchant.objects.using('source').filter(pk__in=owner_ids)
-        }
+        .only(
+            'cr_account',
+            'amount',
+            'status',
+            'created_at',
+            'approved_at',
+            'batch__date_from',
+            'batch__date_to',
+        )
+        .select_related('cr_account', 'batch')
+        .order_by('created_at', 'pk')
+    )
+    owner_ids = {line.cr_account.owner_id for line in lines}
+    merchants_by_id = {
+        merchant.pk: merchant
+        for merchant in Merchant.objects.using('source').filter(pk__in=owner_ids)
+    }
 
-        total = Decimal('0')
-        paid = Decimal('0')
-        successful_count = 0
-        unsuccessful_count = 0
-        for line in lines:
-            owner = merchants_by_id.get(line.cr_account.owner_id)
-            if owner is None or normalize_name_key(owner.name) != merchant_name_key:
-                continue
-
-            amount = line.amount or Decimal('0')
-            total += amount
-            if line.ft_status == 'SUCCESS':
-                successful_count += 1
-                paid += amount
-            else:
-                unsuccessful_count += 1
-
-        if successful_count + unsuccessful_count == 0:
+    for line in lines:
+        owner = merchants_by_id.get(line.cr_account.owner_id)
+        if owner is None or normalize_name_key(owner.name) != merchant_name_key:
             continue
-        if unsuccessful_count == 0:
-            status = 'SUCCESS'
-        elif successful_count == 0:
-            status = 'PENDING'
-        else:
-            status = 'PARTIAL'
 
+        amount = line.amount or Decimal('0')
+        status = 'SUCCESS' if (line.status or '').strip().upper() == 'APPROVED' else 'PENDING'
+        batch_period = (
+            f'{line.batch.date_from:%d-%m-%Y} - {line.batch.date_to:%d-%m-%Y}'
+        )
         results.append({
-            'batch_id': batch.pk,
-            'date_from': batch.date_from.strftime('%d-%m-%Y'),
-            'date_to': batch.date_to.strftime('%d-%m-%Y'),
-            'total_amount': f'{total:.2f}',
-            'paid_amount': f'{paid:.2f}',
+            'transaction_period': batch_period,
+            'payment_date': (
+                line.approved_at.strftime('%d-%m-%Y')
+                if line.approved_at is not None
+                else None
+            ),
+            'total_amount': f'{amount:.2f}',
+            'paid_amount': f'{amount:.2f}' if status == 'SUCCESS' else '0.00',
             'status': status,
         })
     return results

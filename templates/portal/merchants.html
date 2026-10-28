@@ -131,7 +131,7 @@
                 {% if is_admin %}
                   <td>
                     {% if merchant.id in manageable_merchant_ids %}
-                      <form method="post">
+                      <form method="post" data-confirm="{% if merchant.is_active %}Deactivate{% else %}Activate{% endif %} {{ merchant.merchant_name }}?">
                         {% csrf_token %}
                         <input type="hidden" name="action" value="toggle_merchant" />
                         <input type="hidden" name="merchant_id" value="{{ merchant.id }}" />

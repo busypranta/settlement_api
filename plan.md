@@ -25,10 +25,11 @@ The portal must **not** modify the existing application's source tables. It must
 - The portal has its own merchant registry containing a unique merchant UID and unique merchant name.
 - Merchant names are unique, so `OwnTransaction.merchant_name` can be matched to the portal merchant registry.
 - For settlement lines, resolve merchant ownership through `SettlementLine.cr_account` → `BankAccount.owner`.
-- Settlement reporting uses settlement batch business-period dates (`date_from` and `date_to`), not settlement-line creation timestamps.
-- Include incomplete/partially completed settlement activity as well as completed batches. By default, include `PARTIAL` and `COMPLETED` batches and exclude `DRAFT` batches from external reports.
-- Only `SettlementLine.ft_status == 'SUCCESS'` counts as paid. Other values count as not yet successful.
-- Aggregate multiple settlement lines for the same merchant and batch before deriving the merchant's settlement status.
+- Settlement reporting filters individual lines by related batch `date_from`; each result includes the full batch period as `transaction_period`.
+- Batch status does not filter settlement lines. `SettlementLine.status == 'APPROVED'` maps to `SUCCESS`; all other values map to `PENDING`.
+- `paid_amount` is the line amount when approved and `0.00` otherwise; `payment_date` comes from `SettlementLine.approved_at`.
+- Settlement report requests may span at most 60 calendar dates, inclusive. The transaction endpoint remains paginated and is not subject to this report date cap.
+- USER accounts have multi-merchant report access disabled by default; an admin or superadmin must enable it. Merchant assignment checks still apply to every requested merchant.
 - The transaction endpoint returns `OwnTransaction.merchant_amount`, not the transaction's gross `amount`.
 - The transaction endpoint returns transactions assigned to settlement batches.
 - Transaction results are paginated, with a maximum of 200 records per page.
@@ -330,11 +331,10 @@ Content-Type: application/json
 1. Authenticate the caller.
 2. Validate date format and date order.
 3. Validate that every requested merchant UID exists, is active, and is assigned to the caller (for a USER role).
-4. Query settlement batches by their business-period dates.
-5. Include `PARTIAL` and `COMPLETED` batches; exclude `DRAFT` batches by default.
-6. Resolve each settlement line's merchant via its credit account owner.
-7. Aggregate relevant lines by merchant and batch.
-8. Calculate `total_amount`, `paid_amount`, and status using Section 11.
+4. Query settlement lines whose related batch `date_from` is within the requested date range, without filtering by batch status.
+5. Resolve each settlement line's merchant via its credit account owner.
+6. Return one result per matching line, with `transaction_period` formatted from the related batch dates and `payment_date` from the line's `approved_at`.
+7. Calculate `total_amount`, `paid_amount`, and status using Section 11.
 
 **Illustrative response**
 
@@ -347,12 +347,11 @@ Content-Type: application/json
       "merchant_name": "Example Merchant Ltd.",
       "settlements": [
         {
-          "batch_id": 123,
-          "date_from": "01-10-2026",
-          "date_to": "07-10-2026",
+          "transaction_period": "01-10-2026 - 07-10-2026",
+          "payment_date": null,
           "total_amount": "10000.00",
-          "paid_amount": "9500.00",
-          "status": "PARTIAL"
+          "paid_amount": "10000.00",
+          "status": "SUCCESS"
         }
       ]
     }
@@ -360,7 +359,7 @@ Content-Type: application/json
 }
 ```
 
-`date_from` and `date_to` are used instead of an ambiguous single settlement date because a batch may represent a multi-day business period. Monetary values should be serialized as decimal strings with two decimal places.
+The requested date range filters lines by the related batch's `date_from` (inclusive); `transaction_period` describes the related batch's full business period. `payment_date` is the line's approval date, or `null` if it has not been approved. Monetary values should be serialized as decimal strings with two decimal places.
 
 ### 10.2 Single-merchant settlement report
 
@@ -432,7 +431,7 @@ Content-Type: application/json
 }
 ```
 
-For this endpoint, `amount` is the serialized `OwnTransaction.merchant_amount`. The API status should be `SUCCESS` when the source transaction status is `SUCCESS`; otherwise map it to `PENDING` to preserve the documented API contract of `SUCCESS`/`PENDING`. The source status can remain available in internal diagnostics if useful, but should not be exposed unless required by the API contract.
+For this endpoint, `amount` is the serialized `OwnTransaction.merchant_amount`. API status is `SUCCESS` only when an `APPROVED` settlement line for the requested merchant exists in the transaction's settlement batch; otherwise it is `PENDING`.
 
 ### 10.4 JWT endpoints
 
@@ -446,33 +445,23 @@ The business APIs require an `Authorization: Bearer <access_token>` header.
 
 ## 11. Settlement amount and status calculations
 
-For each merchant and each eligible settlement batch:
+For each matching settlement line that resolves to the merchant through `cr_account.owner`:
 
-- `total_amount` = sum of `SettlementLine.amount` for all settlement lines in that batch that resolve to that merchant through `cr_account.owner`.
-- `paid_amount` = sum of amounts for those lines where `ft_status == 'SUCCESS'`.
-- A line is successful only when `ft_status` is exactly `SUCCESS`; blank, pending, failed, or any other value is treated as not successful for this report.
+- `total_amount` = the line's `amount`.
+- `paid_amount` = the line's `amount` when `SettlementLine.status` is `APPROVED` (case-insensitive), otherwise `0.00`.
+- API settlement status is `SUCCESS` when the line status is `APPROVED`; `FAILURE`, `DRAFT`, blank, and any other value map to `PENDING`.
 
-Status rules after aggregation:
-
-| Line outcomes for the merchant within one batch | API settlement status |
-|---|---|
-| Every relevant line has `ft_status = SUCCESS` | `SUCCESS` |
-| No relevant line has `ft_status = SUCCESS` | `PENDING` |
-| At least one line succeeds and at least one line does not succeed | `PARTIAL` |
-
-This calculation is made at the **merchant + batch** level. It is not calculated across every batch in the date range as one combined status.
-
-The report should not assume that the `SettlementLine.status` workflow field and `SettlementLine.ft_status` transfer-result field mean the same thing. `ft_status` controls whether an amount counts as paid; batch status controls whether the batch is included in external reporting.
+Each settlement line is returned independently. Neither `SettlementLine.ft_status` nor batch status affects the settlement report. The batch is read only to provide its date range as `transaction_period`.
 
 ## 12. Date filtering rules
 
-### Settlement summaries
+### Settlement lines
 
 - Request fields are `from_date` and `to_date` in `dd-mm-yyyy` format.
-- Use `SettlementBatch.date_from` and `SettlementBatch.date_to` as the batch business period.
-- Recommended range logic is interval overlap: include a batch where `batch.date_from <= requested_to_date` and `batch.date_to >= requested_from_date`.
-- Include only the configured eligible batch statuses (`PARTIAL`, `COMPLETED` by default).
-- Return each batch's `date_from` and `date_to` so clients can see its full business period.
+- Filter by the related `SettlementBatch.date_from` within the requested date range, inclusive.
+- Limit the requested range to 60 calendar dates, inclusive.
+- Do not filter by settlement batch status or group lines by batch.
+- Return one result per line, with `transaction_period` formatted from the related batch's dates and `payment_date` from `SettlementLine.approved_at` (`null` if absent).
 
 ### Transaction endpoint
 
@@ -675,10 +664,10 @@ Operational requirements:
 ### Phase 5 — Settlement APIs
 
 - Implement settlement-line owner resolution via `SettlementLine.cr_account` → `BankAccount.owner` (GenericForeignKey) filtered to `Merchant` owners; map to portal `PORTAL_MERCHANT` via normalized merchant name key.
-- Implement batch-period filtering using `SettlementBatch.date_from`/`date_to` with interval overlap (`batch.date_from <= to_date` and `batch.date_to >= from_date`), include only `PARTIAL` and `COMPLETED` batches by default (exclude `DRAFT`).
-- Aggregate by merchant+batch; compute `total_amount` = sum of `SettlementLine.amount` for lines resolving to merchant in batch; `paid_amount` = sum where `ft_status == 'SUCCESS'`. Derive status: all SUCCESS → `SUCCESS`, none → `PENDING`, mixed → `PARTIAL`.
+- Filter each settlement line by its related batch `date_from` in the requested inclusive range, without filtering on batch status; return one item per line and use batch dates for `transaction_period`.
+- Compute amounts and status per line using `SettlementLine.status`: `APPROVED` → `SUCCESS`, all other statuses → `PENDING`; `paid_amount` is the line amount only for `APPROVED`.
 - Implement all three versioned endpoints under `/v1/api/` with proper auth/merchant authorization.
-- For transactions: filter by `OwnTransaction.txn_datetime` in range, require `settlement_batch` non-null and batch in eligible statuses, match merchant by `merchant_name` to portal merchant, return `merchant_amount` as `amount`, paginate max 200 ordered by `txn_datetime`, `id` (tie-breaker), map non-`SUCCESS` source status to `PENDING`.
+- For transactions: filter by `OwnTransaction.txn_datetime` in range, require `settlement_batch` non-null and batch in eligible statuses, match merchant by `merchant_name` to portal merchant, return `merchant_amount` as `amount`, paginate max 200 ordered by `txn_datetime`, `id` (tie-breaker), and mark each transaction `SUCCESS` only when an `APPROVED` settlement line for that merchant exists in its batch; otherwise return `PENDING`.
 - Add pagination, consistent errors, OpenAPI docs (drf-spectacular), and API request logging to `PORTAL_API_LOG` (no secrets/financial payloads).
 
 **Deliverable:** tested API endpoints using Oracle source data.
@@ -697,8 +686,8 @@ Operational requirements:
 These are implementation details to verify; they do not change the agreed high-level design.
 
 1. **Eligible batches:** external reports include `PARTIAL` and `COMPLETED`; `DRAFT` is excluded by default. If draft batches must also appear as pending, change the eligibility rule deliberately and test it.
-2. **Date-range semantics:** settlement summaries use interval overlap against `SettlementBatch.date_from`/`date_to`. The transaction endpoint defaults to filtering `OwnTransaction.txn_datetime` while requiring an eligible settlement-batch assignment. These date semantics should be confirmed during API contract review before clients integrate.
-3. **Transaction status mapping:** the API's transaction endpoint exposes only `SUCCESS` or `PENDING`; source statuses other than `SUCCESS` map to `PENDING` unless the contract is expanded.
+2. **Date-range semantics:** settlement reports filter on `SettlementBatch.date_from` with a maximum inclusive span of 60 calendar dates. The transaction endpoint filters `OwnTransaction.txn_datetime`, requires an eligible settlement-batch assignment, and remains paginated.
+3. **Transaction status mapping:** the transaction endpoint exposes `SUCCESS` when a matching merchant settlement line in the transaction's batch has status `APPROVED`; all other cases map to `PENDING`.
 4. **JWT refresh policy:** two-hour access-token lifetime is confirmed. Configure refresh-token lifetime, rotation, and revocation separately.
 5. **Merchant UID lifecycle:** establish whether UIDs are generated by the portal or supplied by administrators; once in use, a UID should be stable.
 6. **Source model mapping:** confirm exact table names, primary keys, content-type IDs/model labels, and Oracle schema names in the deployed database before building unmanaged models.
@@ -716,13 +705,15 @@ The portal is ready for acceptance when:
 - SUPERADMIN has global administration rights.
 - ADMIN can manage only users they created or users explicitly assigned to them.
 - USER can use the business APIs only for assigned, active merchants.
+- Multi-merchant reports are available to USER accounts only when an admin or superadmin enables the user's multiple-merchant API permission.
 - Merchant names and UIDs are registered and uniquely constrained in the portal schema (normalized name key unique).
 - Settlement lines are attributed through `SettlementLine.cr_account` → `BankAccount.owner` (GenericForeignKey), only where owner is a `Merchant`; not by assuming one line equals one merchant.
-- Settlement reports use batch business periods (`date_from`/`date_to`) and aggregate multiple lines by merchant and batch.
-- Only lines with `ft_status == 'SUCCESS'` count as paid.
-- Status calculations correctly produce `SUCCESS`, `PENDING`, or `PARTIAL` at merchant+batch level.
+- Settlement reports filter lines by related batch `date_from`, return one item per line, and expose batch dates as `transaction_period`.
+- Settlement status uses `SettlementLine.status`; only `APPROVED` maps to `SUCCESS`, all other values map to `PENDING`.
+- `payment_date` uses `SettlementLine.approved_at`.
+- Settlement report requests cannot cover more than 60 calendar dates inclusive; transaction pages remain capped at 200 records.
 - Transaction responses use `OwnTransaction.merchant_amount` and require assignment to an eligible settlement batch (`PARTIAL`/`COMPLETED`).
-- Transaction pages never return more than 200 records, ordered deterministically.
+- Transaction pages never return more than 200 records, ordered deterministically; transaction status is based on whether that merchant has an `APPROVED` settlement line in the transaction's batch.
 - Users, admins, and superadmins see only the API logs permitted by their role scope.
 - Logs and error responses do not expose credentials, JWTs, or unnecessary sensitive transaction data.
 - Automated tests cover the main business calculations, role boundaries, and Oracle integration.

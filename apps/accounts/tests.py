@@ -1,4 +1,6 @@
 import json
+from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.test import TestCase
@@ -10,11 +12,14 @@ from apps.merchants.models import AdminUserAssignment, PortalMerchant, UserMerch
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.http import HttpResponse
-from django.test import RequestFactory
+from django.test import RequestFactory, SimpleTestCase
 from rest_framework.test import APIClient
 from rest_framework.response import Response as DRFResponse
 
 from core.middleware import APILogMiddleware
+from apps.settlement_api.serializers import SettlementReportDateRangeSerializer
+from apps.settlement_api.services import approved_settlement_batch_ids_for_merchant
+from django.utils import timezone
 
 
 class PortalAuthenticationTests(TestCase):
@@ -177,6 +182,57 @@ class PortalAuthenticationTests(TestCase):
         self.assertContains(response, 'data-password-strength="true"')
         self.assertContains(response, 'data-strength-for="id_new_password1"')
 
+    def test_settlement_report_date_range_is_limited_to_60_calendar_days(self):
+        allowed = SettlementReportDateRangeSerializer(data={
+            'from_date': '01-01-2026',
+            'to_date': '01-03-2026',
+        })
+        self.assertTrue(allowed.is_valid(), allowed.errors)
+        rejected = SettlementReportDateRangeSerializer(data={
+            'from_date': '01-01-2026',
+            'to_date': '02-03-2026',
+        })
+        self.assertFalse(rejected.is_valid())
+        self.assertIn('The date range cannot exceed 60 calendar days.', str(rejected.errors))
+
+    def test_transaction_date_range_remains_unlimited(self):
+        from apps.settlement_api.serializers import DateRangeSerializer
+
+        serializer = DateRangeSerializer(data={
+            'from_date': '01-01-2025',
+            'to_date': '31-12-2026',
+        })
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+
+
+class SettlementLineStatusTests(SimpleTestCase):
+    @patch('apps.settlement_api.services.SourceContentType.objects')
+    @patch('apps.settlement_api.services.SettlementLine.objects')
+    @patch('apps.settlement_api.services.Merchant.objects')
+    def test_only_approved_lines_for_the_target_merchant_mark_a_batch_successful(
+        self,
+        merchant_objects,
+        line_objects,
+        content_type_objects,
+    ):
+        content_type_objects.using.return_value.filter.return_value.values_list.return_value.first.return_value = 4
+        line_objects.using.return_value.filter.return_value.values_list.return_value = [
+            (10, 'APPROVED', 101),
+            (11, 'DRAFT', 101),
+            (12, 'APPROVED', 202),
+        ]
+        merchant_objects.using.return_value.filter.return_value = [
+            type('SourceMerchant', (), {'pk': 101, 'name': 'Visible Merchant'})(),
+            type('SourceMerchant', (), {'pk': 202, 'name': 'Other Merchant'})(),
+        ]
+
+        approved = approved_settlement_batch_ids_for_merchant(
+            type('PortalMerchant', (), {'merchant_name': 'Visible Merchant'})(),
+            {10, 11, 12},
+        )
+
+        self.assertEqual(approved, {10})
+
 
 class ApiJsonResponseMiddlewareTests(TestCase):
     def test_api_debug_html_errors_are_returned_as_json(self):
@@ -271,6 +327,92 @@ class PortalVisibilityTests(TestCase):
         self.assertNotContains(playground, 'merchant-picker-trigger')
         self.assertNotContains(playground, '<select id="playground-merchants"')
 
+    def test_playground_shows_multi_merchant_mode_only_when_enabled(self):
+        UserMerchant.objects.create(user=self.user, merchant=self.other_merchant)
+        self.client.force_login(self.user)
+        disabled = self.client.get(reverse('portal-api-playground'))
+        self.assertNotContains(disabled, 'Settlement report · multiple merchants')
+
+        self.user.allow_multiple_merchants = True
+        self.user.save(update_fields=['allow_multiple_merchants'])
+        enabled = self.client.get(reverse('portal-api-playground'))
+        self.assertContains(enabled, 'Settlement Report · Multiple')
+
+    def test_user_without_multi_merchant_permission_is_denied_multi_report_api(self):
+        api_client = APIClient()
+        api_client.force_authenticate(self.user)
+        response = api_client.post('/v1/api/settlement-report', {}, format='json')
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(
+            response.json()['error'],
+            'Multiple-merchant API access is not enabled for this account',
+        )
+
+    def test_settlement_report_rejects_ranges_longer_than_60_days(self):
+        api_client = APIClient()
+        api_client.force_authenticate(self.user)
+        response = api_client.post(
+            '/v1/api/settlement-report/merchant-visible',
+            {'from_date': '01-01-2026', 'to_date': '02-03-2026'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 400)
+
+    @patch('apps.settlement_api.views.approved_settlement_batch_ids_for_merchant')
+    @patch('apps.settlement_api.views.OwnTransaction.objects.using')
+    def test_transaction_status_uses_approved_merchant_line_in_its_batch(
+        self,
+        source_using,
+        approved_batch_lookup,
+    ):
+        transaction = SimpleNamespace(
+            txn_datetime=timezone.now(),
+            merchant_amount=Decimal('6500.00'),
+            settlement_batch_id=55,
+        )
+        queryset = source_using.return_value.filter.return_value.order_by.return_value
+        queryset.count.return_value = 1
+        queryset.__getitem__.return_value = [transaction]
+        approved_batch_lookup.side_effect = [{55}, set()]
+
+        api_client = APIClient()
+        api_client.force_authenticate(self.user)
+        request_data = {'from_date': '01-01-2026', 'to_date': '01-03-2026'}
+        success = api_client.post(
+            '/v1/api/settlement-transactions/merchant-visible',
+            request_data,
+            format='json',
+        )
+        pending = api_client.post(
+            '/v1/api/settlement-transactions/merchant-visible',
+            request_data,
+            format='json',
+        )
+
+        self.assertEqual(success.json()['data'][0]['status'], 'SUCCESS')
+        self.assertEqual(pending.json()['data'][0]['status'], 'PENDING')
+
+    def test_admin_can_enable_multi_merchant_access_for_scoped_user(self):
+        admin = User.objects.create_user(
+            username='multi-access-admin',
+            password='AdminPassword!9284',
+            role=User.ROLE_ADMIN,
+        )
+        managed_user = User.objects.create_user(
+            username='multi-access-user',
+            password='UserPassword!9284',
+            role=User.ROLE_USER,
+            created_by=admin,
+        )
+        self.client.force_login(admin)
+        response = self.client.post(reverse('portal-managed-accounts'), {
+            'action': 'toggle_multi_merchant_access',
+            'user_id': managed_user.pk,
+        })
+        self.assertRedirects(response, reverse('portal-managed-accounts'))
+        managed_user.refresh_from_db()
+        self.assertTrue(managed_user.allow_multiple_merchants)
+
     def test_authenticated_workspace_pages_render(self):
         self.client.force_login(self.user)
         for route_name in (
@@ -326,8 +468,8 @@ class PortalVisibilityTests(TestCase):
         self.merchant.created_by = admin
         self.merchant.save(update_fields=['created_by'])
         self.client.force_login(admin)
-        response = self.client.post(reverse('portal-managed-accounts'), {
-            'action': 'create_user',
+        self.assertEqual(self.client.get(reverse('portal-create-account')).status_code, 200)
+        response = self.client.post(reverse('portal-create-account'), {
             'username': 'new-merchant-user',
             'password': 'NewUser!9284',
             'name': 'Jordan Lee',
@@ -349,6 +491,13 @@ class PortalVisibilityTests(TestCase):
         })
         self.assertRedirects(response, reverse('portal-managed-accounts'))
         self.assertTrue(UserMerchant.objects.filter(user=account, merchant=self.merchant).exists())
+        account_page = self.client.get(reverse('portal-managed-accounts'))
+        self.assertContains(account_page, self.merchant.merchant_uid)
+        self.assertContains(account_page, 'confirm-action-dialog')
+
+        merchant_page = self.client.get(reverse('portal-merchant-access'))
+        self.assertEqual(merchant_page.status_code, 200)
+        self.assertEqual(merchant_page.content.count(b'data-searchable-select="true"'), 2)
 
     def test_admin_cannot_create_another_admin_or_manage_out_of_scope_user(self):
         admin = User.objects.create_user(
@@ -387,9 +536,9 @@ class PortalVisibilityTests(TestCase):
         )
         self.client.force_login(superadmin)
         directory_response = self.client.get(reverse('portal-managed-accounts'))
-        self.assertContains(directory_response, 'Total accounts')
+        self.assertContains(directory_response, 'All portal accounts')
         self.assertContains(directory_response, 'Assign users to an admin')
-        self.assertContains(directory_response, 'data-account-status-filter')
+        self.assertContains(directory_response, 'name="status"')
         self.assertContains(directory_response, 'ADMIN SCOPE DIRECTORY')
         self.assertContains(directory_response, 'account-role-filter')
 
@@ -408,8 +557,7 @@ class PortalVisibilityTests(TestCase):
             password='GlobalAdmin!9284',
         )
         self.client.force_login(superadmin)
-        response = self.client.post(reverse('portal-managed-accounts'), {
-            'action': 'create_user',
+        response = self.client.post(reverse('portal-create-account'), {
             'username': 'new-portal-admin',
             'password': 'Admin!9284',
             'name': 'Alex Admin',

@@ -14,5 +14,6 @@ urlpatterns = [
     path('playground/', web_views.api_playground, name='portal-api-playground'),
     path('merchants/', web_views.merchant_access, name='portal-merchant-access'),
     path('accounts/', web_views.managed_accounts, name='portal-managed-accounts'),
+    path('accounts/create/', web_views.create_account, name='portal-create-account'),
     path('profile/', web_views.profile, name='portal-profile-page'),
 ]
