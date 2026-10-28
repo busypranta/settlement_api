@@ -1,0 +1,116 @@
+Settlement API - Security Issues & Feature Suggestions
+======================================================
+
+Date: 2026-10-28
+Repository: settlement_api
+
+## SECURITY ISSUES
+
+### Critical
+1. **Hardcoded/Default Security Concerns**
+   - SECRET_KEY must be set via env; ensure it's not committed. .env exists in repo - must be in .gitignore and never committed in prod.
+   - No explicit secure headers beyond what Django provides; consider HSTS (SECURE_HSTS_SECONDS), SECURE_SSL_REDIRECT in production.
+   - ALLOWED_HOSTS empty/default needs proper prod config.
+
+2. **Authentication/Authorization**
+   - JWT tokens have 2h access lifetime (reasonable) but ROTATE_REFRESH_TOKENS=False and BLACKLIST_AFTER_ROTATION=False - refresh tokens don't rotate, no blacklist; stolen refresh tokens remain valid for 7 days. Consider enabling rotation + blacklist (simplejwt can do with blacklist app).
+   - API playground in portal stores tokens in page memory only (good) but need to ensure no localStorage.
+   - For admin APIs, some views check role flags in multiple ways (role field + is_superuser) - can be confusing; ensure consistent checks.
+   - User creation allows setting role only to USER/ADMIN, preventing privilege escalation via is_superuser/is_staff flags (good). But ensure this is enforced everywhere.
+
+3. **Input Validation & Injection**
+   - Services use ORM properly with .using('source') and filter by params - looks safe from SQL injection via ORM. Direct SQL only in health check (SELECT 1 FROM DUAL) - safe.
+   - Date parsing uses DRF DateField with specific format (%d-%m-%Y) - good.
+   - Merchant name matching uses casefold/normalized keys - helps avoid collisions.
+   - SettlementTransactionsView does `queryset[(page - 1)*page_size:page*page_size]` after count() - pagination looks fine. No raw SQL string concatenation.
+   - However, in some places (e.g., merchant name filtering in transactions uses `merchant_name__iexact` against source DB) - need to ensure case/whitespace consistency.
+
+4. **Data Exposure**
+   - APILogMiddleware catches exceptions, logs them, returns generic "Internal server error" with request_id (good). But for non-JSON API responses it may replace with generic message; ensure no sensitive data leaks.
+   - In core/exceptions.py, DRF exception handler wraps errors as {'success': False, 'errors': ..., 'request_id': ...} - be careful not to leak stack traces in production (DEBUG=False).
+   - ApiLog stores client_ip (GenericIPAddressField) - ensure PII handling/compliance if required.
+   - AuditLog stores metadata as JSON - ensure no secrets logged.
+   - Health endpoint (AllowAny, no auth) returns only status - good, doesn't leak DB details.
+
+5. **Cross-cutting Concerns**
+   - CSRF protection enabled (good for session auth). API uses JWT so CSRF less of an issue for API calls, but portal forms need protection (Django default).
+   - CORS not explicitly configured in visible settings - if frontend served separately, need django-cors-headers. Not shown in requirements; might be needed.
+   - X_FRAME_OPTIONS = 'DENY' (good). SECURE_CONTENT_TYPE_NOSNIFF = True (good). SESSION_COOKIE_SECURE/CSRF_COOKIE_SECURE depend on DEBUG (good).
+   - WhiteNoise for static files (good). File uploads not obvious from codebase - check if any; media/ exists.
+   - Rate limiting configured (300/hour user, 30/hour anon) - good. Throttling applied via REST framework defaults.
+
+6. **Business Logic Security**
+   - Settlement transactions status determination relies on matching APPROVED settlement lines by merchant name normalization - logic is correct per README. But name-based matching could be spoofed if merchant names collide? Portal has unique normalized merchant_name_key and UID; good.
+   - Merchant assignment/management has proper scoping (admins can only manage scoped users/merchants). Can manage logic in permissions looks thorough.
+   - "Multiple-merchant API access" disabled by default for USER role - enforced in SettlementReportMultiView.
+   - Source DB is read-only enforced by router (raises PermissionDenied on write) - good defense in depth.
+
+### Medium
+1. **Logging & Monitoring**
+   - APILogMiddleware logs exceptions but only exception type/name; consider structured logging with request context. Also ensure logs don't contain sensitive data.
+   - ApiLog stores http_status, duration, etc - good for audit. But consider log retention/rotation.
+   
+2. **Session Security**
+   - Using Django sessions for portal (alongside JWT for API). SESSION_COOKIE_SECURE tied to DEBUG - ensure proper config in prod. Consider SESSION_COOKIE_HTTPONLY, SESSION_COOKIE_SAMESITE, SESSION_EXPIRE_AT_BROWSER_CLOSE, etc.
+
+3. **Error Messages**
+   - Some error messages are generic (good), others like IntegrityError give specific messages - mostly fine.
+
+## FEATURE SUGGESTIONS
+
+### Security Enhancements
+- [ ] Enable JWT token rotation with blacklist (add rest_framework_simplejwt.token_blacklist to INSTALLED_APPS, enable ROTATE_REFRESH_TOKENS=True, BLACKLIST_AFTER_ROTATION=True). Add logout/token blacklist endpoint.
+- [ ] Add security headers middleware configuration (HSTS, Referrer-Policy, Permissions-Policy). Django 4+ has SecurityMiddleware; consider django-csp or custom headers.
+- [ ] Implement account lockout after failed login attempts (django-axes or custom). Login is via DRF SimpleJWT token obtain and Django portal auth - need to protect both.
+- [ ] Add 2FA/MFA for privileged roles (SUPERADMIN/ADMIN).
+- [ ] API key authentication option for service accounts? Or IP allowlisting.
+- [ ] Add request signing for sensitive operations.
+- [ ] Implement audit log export/archival and better search.
+- [ ] Add data masking in logs for PII (mobile, emails).
+- [ ] Content Security Policy for portal UI.
+
+### API & Functionality
+- [ ] Add pagination to more list endpoints (ApiLogListView already limits to 500, AuditLogListView limits to 500 - consider proper pagination).
+- [ ] Add filtering/search to ApiLog and AuditLog (by date range, status, endpoint, user).
+- [ ] Export functionality (CSV/Excel) for reports, logs, audit trails.
+- [ ] Webhook support for settlement status updates.
+- [ ] Bulk operations for merchant assignments.
+- [ ] Support for more date formats/timezones (USE_TZ=False currently; be consistent).
+- [ ] Add API versioning strategy beyond /v1/ (e.g., headers).
+- [ ] Add health check details (DB latency, version) but keep it non-sensitive or auth-protected.
+- [ ] Settlement report caching for expensive queries?
+- [ ] Add support for searching merchants by partial name/UID.
+
+### Portal/UI
+- [ ] Enhanced dashboard with charts/metrics.
+- [ ] Real-time notifications for failed API calls.
+- [ ] User activity timeline.
+- [ ] Better error handling in portal UI.
+- [ ] Dark mode theme.
+- [ ] Mobile responsiveness improvements.
+
+### DevOps/Observability
+- [ ] Structured logging (JSON) for better log aggregation.
+- [ ] Metrics endpoint (Prometheus) with auth.
+- [ ] Tracing (OpenTelemetry).
+- [ ] Backup/restore procedures documented.
+- [ ] Environment validation on startup.
+- [ ] CI/CD pipeline config.
+- [ ] Container security scanning.
+- [ ] Database migration rollback strategy.
+- [ ] Secrets management integration (Vault/AWS Secrets Manager).
+
+### Code Quality
+- [ ] Add type hints where missing.
+- [ ] Increase test coverage (apps/accounts/tests.py exists; expand).
+- [ ] API documentation improvements with examples.
+- [ ] OpenAPI schema validation.
+- [ ] Add pre-commit hooks (black, flake8, isort).
+- [ ] Dependency vulnerability scanning.
+- [ ] Add .env to .gitignore if not present (check .gitignore).
+
+## NOTES
+- The architecture is clean: portal DB (default) vs read-only source DB (Oracle), proper separation of concerns, role-based access control well implemented.
+- Good use of middleware for API logging and request IDs.
+- Settlement logic with name normalization is clever for cross-schema matching.
+- Password policy enforced (8-16 chars) with validators.
