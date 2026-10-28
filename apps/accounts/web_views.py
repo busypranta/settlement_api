@@ -12,8 +12,9 @@ from apps.merchants.models import AdminUserAssignment, PortalMerchant, UserMerch
 from apps.settlement_api.permissions import (
     can_manage_merchant,
     can_manage_user,
+    manageable_merchant_ids,
     managed_user_ids,
-    merchant_is_allowed,
+    merchant_access_ids,
 )
 from .forms import (
     AdminPasswordResetForm,
@@ -25,6 +26,7 @@ from .forms import (
     UserCreateForm,
 )
 from .models import User
+from .tokens import revoke_user_refresh_tokens
 
 
 def scoped_users(user):
@@ -53,7 +55,7 @@ def scoped_logs(user):
         return ApiLog.objects.select_related('user').filter(
             Q(user_id__in=managed_user_ids(user)) | Q(user=user),
         )
-    return ApiLog.objects.filter(user=user)
+    return ApiLog.objects.select_related('user').filter(user=user)
 
 
 def audit_action(request, action, target=None, metadata=None):
@@ -109,11 +111,13 @@ def api_logs(request):
 
 @login_required
 def api_playground(request):
-    merchants = [
-        merchant
-        for merchant in scoped_merchants(request.user).filter(is_active=True).order_by('merchant_name')
-        if merchant_is_allowed(request.user, merchant)
-    ]
+    merchants = list(
+        scoped_merchants(request.user)
+        .filter(is_active=True)
+        .order_by('merchant_name')
+    )
+    allowed_merchant_ids = merchant_access_ids(request.user, merchants)
+    merchants = [merchant for merchant in merchants if merchant.pk in allowed_merchant_ids]
     can_use_multi_merchant_api = (
         request.user.role != User.ROLE_USER
         or request.user.allow_multiple_merchants
@@ -202,17 +206,14 @@ def merchant_access(request):
         else:
             messages.error(request, 'Unknown merchant action.')
 
-    merchant_rows = merchants.distinct().prefetch_related('usermerchant_set__user')
-    manageable_merchant_ids = {
-        merchant.pk for merchant in merchant_rows
-        if can_manage_merchant(request.user, merchant)
-    }
+    merchant_rows = list(merchants.distinct())
+    manageable_ids = manageable_merchant_ids(request.user, merchant_rows)
     return render(request, 'portal/merchants.html', {
         'merchants': merchant_rows,
         'is_admin': is_admin,
         'merchant_form': merchant_form,
         'assignment_form': assignment_form,
-        'manageable_merchant_ids': manageable_merchant_ids,
+        'manageable_merchant_ids': manageable_ids,
     })
 
 
@@ -342,7 +343,9 @@ def managed_accounts(request):
                 )
                 if password_form.is_valid():
                     account.set_password(password_form.cleaned_data['password'])
-                    account.save(update_fields=['password', 'updated_at'])
+                    with transaction.atomic():
+                        account.save(update_fields=['password', 'updated_at'])
+                        revoke_user_refresh_tokens(account)
                     audit_action(request, 'user.password_reset', account)
                     messages.success(request, f'A new password was set for {account.username}.')
                     return redirect('portal-managed-accounts')
@@ -461,7 +464,9 @@ def profile(request):
         elif action == 'password':
             password_form = PortalPasswordChangeForm(user=request.user, data=request.POST)
             if password_form.is_valid():
-                user = password_form.save()
+                with transaction.atomic():
+                    user = password_form.save()
+                    revoke_user_refresh_tokens(user)
                 update_session_auth_hash(request, user)
                 messages.success(request, 'Your password was changed.')
                 return redirect('portal-profile-page')

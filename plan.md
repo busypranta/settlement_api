@@ -441,6 +441,7 @@ The authentication endpoints are documented alongside the business APIs:
 - `POST /api/v1/auth/token/` — authenticate and issue JWT tokens.
 - `POST /api/v1/auth/token/refresh/` — issue a new access token according to the configured refresh policy.
 - `POST /api/v1/auth/token/verify/` — optionally verify token validity.
+- `POST /api/v1/auth/token/logout/` — blacklist the submitted refresh token.
 
 The business APIs require an `Authorization: Bearer <access_token>` header.
 

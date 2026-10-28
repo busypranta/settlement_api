@@ -57,6 +57,27 @@ def approved_settlement_batch_ids_for_merchant(portal_merchant, batch_ids):
 
 
 def compute_settlement_for_merchant(portal_merchant, from_date, to_date):
+    results_by_merchant = compute_settlement_for_merchants(
+        [portal_merchant],
+        from_date,
+        to_date,
+    )
+    return results_by_merchant[portal_merchant.merchant_uid]
+
+
+def compute_settlement_for_merchants(portal_merchants, from_date, to_date):
+    portal_merchants = list(portal_merchants)
+    merchant_uid_by_name = {
+        normalize_name_key(merchant.merchant_name): merchant.merchant_uid
+        for merchant in portal_merchants
+    }
+    results_by_merchant = {
+        merchant.merchant_uid: []
+        for merchant in portal_merchants
+    }
+    if not merchant_uid_by_name:
+        return results_by_merchant
+
     merchant_content_type_id = (
         SourceContentType.objects
         .filter(app_label='merchants', model='merchant')
@@ -64,10 +85,8 @@ def compute_settlement_for_merchant(portal_merchant, from_date, to_date):
         .first()
     )
     if merchant_content_type_id is None:
-        return []
+        return results_by_merchant
 
-    merchant_name_key = normalize_name_key(portal_merchant.merchant_name)
-    results = []
     lines = (
         SettlementLine.objects
         .filter(
@@ -77,6 +96,8 @@ def compute_settlement_for_merchant(portal_merchant, from_date, to_date):
         )
         .only(
             'cr_account',
+            'cr_account__owner_id',
+            'cr_account__owner_type_id',
             'amount',
             'status',
             'created_at',
@@ -88,14 +109,15 @@ def compute_settlement_for_merchant(portal_merchant, from_date, to_date):
         .order_by('created_at', 'pk')
     )
     owner_ids = {line.cr_account.owner_id for line in lines}
-    merchants_by_id = {
-        merchant.pk: merchant
-        for merchant in Merchant.objects.filter(pk__in=owner_ids)
-    }
+    owner_merchant_uids = {}
+    for owner_id, name in Merchant.objects.filter(pk__in=owner_ids).values_list('pk', 'name'):
+        merchant_uid = merchant_uid_by_name.get(normalize_name_key(name))
+        if merchant_uid is not None:
+            owner_merchant_uids[owner_id] = merchant_uid
 
     for line in lines:
-        owner = merchants_by_id.get(line.cr_account.owner_id)
-        if owner is None or normalize_name_key(owner.name) != merchant_name_key:
+        merchant_uid = owner_merchant_uids.get(line.cr_account.owner_id)
+        if merchant_uid is None:
             continue
 
         amount = line.amount or Decimal('0')
@@ -103,7 +125,7 @@ def compute_settlement_for_merchant(portal_merchant, from_date, to_date):
         batch_period = (
             f'{line.batch.date_from:%d-%m-%Y} - {line.batch.date_to:%d-%m-%Y}'
         )
-        results.append({
+        results_by_merchant[merchant_uid].append({
             'transaction_period': batch_period,
             'payment_date': (
                 line.approved_at.strftime('%d-%m-%Y')
@@ -114,4 +136,4 @@ def compute_settlement_for_merchant(portal_merchant, from_date, to_date):
             'paid_amount': f'{amount:.2f}' if status == 'SUCCESS' else '0.00',
             'status': status,
         })
-    return results
+    return results_by_merchant

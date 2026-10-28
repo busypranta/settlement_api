@@ -8,6 +8,8 @@ os.environ.setdefault('PORTAL_ORACLE_PASSWORD', 'unused')
 from .settings import *
 
 DEBUG = True
+SECURE_SSL_REDIRECT = False
+SECURE_HSTS_SECONDS = 0
 PASSWORD_HASHERS = ['django.contrib.auth.hashers.MD5PasswordHasher']
 MIDDLEWARE = [
     middleware for middleware in MIDDLEWARE

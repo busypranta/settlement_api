@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.views.generic import RedirectView
 from rest_framework_simplejwt.views import (
+    TokenBlacklistView,
     TokenObtainPairView,
     TokenRefreshView,
     TokenVerifyView,
@@ -39,6 +40,7 @@ urlpatterns = [
     path('api/v1/auth/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/v1/auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/v1/auth/token/verify/', TokenVerifyView.as_view(), name='token_verify'),
+    path('api/v1/auth/token/logout/', TokenBlacklistView.as_view(), name='token_blacklist'),
     path('api/schema/', RoleFilteredSchemaView.as_view(
         authentication_classes=DOC_AUTHENTICATION,
         permission_classes=DOC_PERMISSIONS,

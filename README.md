@@ -19,11 +19,11 @@ Settlement Portal is a standalone Django portal for merchant settlement API user
 - Account administration provides a separate account-creation page, searchable/filterable paginated account lists, confirmation for access changes, and a password-reset dialog.
 - Authenticated OpenAPI/Swagger documentation at `/api/docs/`. Business API users and admins see settlement endpoints; portal-management APIs appear only in the SUPERADMIN schema.
 
-The browser portal uses Django's session authentication and CSRF protection. API endpoints continue to use JWT authentication. Access tokens are valid for two hours. The live playground requests a token with the user's portal credentials and keeps the token in page memory only.
+The browser portal uses Django's session authentication and CSRF protection. API endpoints continue to use JWT authentication. Access tokens are valid for two hours. Refresh tokens rotate on use and the previous refresh token is blacklisted; API clients must store the newly returned refresh token. Clients can revoke a refresh token at `/api/v1/auth/token/logout/`, and password changes revoke all outstanding refresh tokens for that account. The live playground requests a token with the user's portal credentials and keeps the token in page memory only.
 
 ## Local setup
 
-1. Copy `.env.example` to `.env`, provide the single Oracle connection details and a strong `SECRET_KEY`, and set `DEBUG=True` for local HTTP development.
+1. Copy `.env.example` to `.env`, provide the single Oracle connection details and a strong `SECRET_KEY`. The example enables `DEBUG=True` for local HTTP development; set it to `False` in production.
 2. Install dependencies: `pip install -r requirements.txt`.
 3. Check settings: `python manage.py check`.
 4. Apply portal-schema migrations: `python manage.py migrate --database default`.
@@ -31,7 +31,7 @@ The browser portal uses Django's session authentication and CSRF protection. API
 6. Start Django: `python manage.py runserver`.
 7. Open `http://127.0.0.1:8000/portal/login/`. Sign in with the same username/password used to obtain a JWT at `/api/v1/auth/token/`.
 
-Set `DEBUG=False` and secure cookie settings in production. Terminate HTTPS at the approved deployment boundary. Never commit `.env` or use production credentials locally.
+Set `DEBUG=False` and secure cookie settings in production. Terminate HTTPS at the approved deployment boundary; production settings redirect HTTP to HTTPS and enable HSTS. Schedule `python manage.py flushexpiredtokens` regularly to remove expired JWT blacklist records. Never commit `.env` or use production credentials locally.
 
 ## Docker
 
@@ -45,7 +45,7 @@ The web container health check validates the configured Oracle connection. Apply
 
 ## API
 
-- JWT: `POST /api/v1/auth/token/`, `POST /api/v1/auth/token/refresh/`, `POST /api/v1/auth/token/verify/`
+- JWT: `POST /api/v1/auth/token/`, `POST /api/v1/auth/token/refresh/`, `POST /api/v1/auth/token/verify/`, `POST /api/v1/auth/token/logout/` (blacklist a refresh token)
 - Multi-merchant report: `POST /api/v1/settlement-report`
 - Single-merchant report: `POST /api/v1/settlement-report/{merchantUID}`
 - Transactions: `POST /api/v1/settlement-transactions/{merchantUID}?page=1` (maximum 200 records/page; requires transaction API access for USER accounts)

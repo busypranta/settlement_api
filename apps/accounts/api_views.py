@@ -1,5 +1,4 @@
 from datetime import timedelta
-
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
@@ -19,6 +18,7 @@ from apps.settlement_api.permissions import (
     can_manage_user,
     managed_user_ids,
 )
+from .tokens import revoke_user_refresh_tokens
 from .forms import ProfileForm
 from .models import User
 
@@ -91,7 +91,9 @@ class PasswordChangeView(APIView):
             raise serializers.ValidationError({'new_password': 'This field is required'})
         ensure_password_valid(new_password, request.user)
         request.user.set_password(new_password)
-        request.user.save(update_fields=['password', 'updated_at'])
+        with transaction.atomic():
+            request.user.save(update_fields=['password', 'updated_at'])
+            revoke_user_refresh_tokens(request.user)
         record_audit(request, 'user.password_changed', request.user)
         return Response({'success': True})
 
@@ -214,7 +216,9 @@ class UserPasswordResetView(APIView):
             raise serializers.ValidationError({'password': 'This field is required'})
         ensure_password_valid(password, target)
         target.set_password(password)
-        target.save(update_fields=['password', 'updated_at'])
+        with transaction.atomic():
+            target.save(update_fields=['password', 'updated_at'])
+            revoke_user_refresh_tokens(target)
         record_audit(request, 'user.password_reset', target)
         return Response({'success': True})
 

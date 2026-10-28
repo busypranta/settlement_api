@@ -1,4 +1,5 @@
 import json
+from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -18,7 +19,14 @@ from rest_framework.response import Response as DRFResponse
 
 from core.middleware import APILogMiddleware
 from apps.settlement_api.serializers import SettlementReportDateRangeSerializer
-from apps.settlement_api.services import approved_settlement_batch_ids_for_merchant
+from apps.settlement_api.services import (
+    approved_settlement_batch_ids_for_merchant,
+    compute_settlement_for_merchants,
+)
+from apps.settlement_api.permissions import (
+    manageable_merchant_ids,
+    merchant_access_ids,
+)
 from django.utils import timezone
 
 
@@ -45,6 +53,95 @@ class PortalAuthenticationTests(TestCase):
         self.assertEqual(token_response.status_code, 200)
         self.assertIn('access', token_response.json())
 
+    def test_refresh_tokens_rotate_and_previous_token_is_blacklisted(self):
+        response = self.client.post('/api/v1/auth/token/', {
+            'username': self.user.username,
+            'password': self.password,
+        }, content_type='application/json')
+        original_refresh = response.json()['refresh']
+
+        rotated_response = self.client.post(
+            '/api/v1/auth/token/refresh/',
+            {'refresh': original_refresh},
+            content_type='application/json',
+        )
+        self.assertEqual(rotated_response.status_code, 200)
+        rotated_refresh = rotated_response.json()['refresh']
+        self.assertNotEqual(rotated_refresh, original_refresh)
+
+        reused_response = self.client.post(
+            '/api/v1/auth/token/refresh/',
+            {'refresh': original_refresh},
+            content_type='application/json',
+        )
+        self.assertEqual(reused_response.status_code, 401)
+
+    def test_password_change_revokes_existing_refresh_tokens(self):
+        token_response = self.client.post('/api/v1/auth/token/', {
+            'username': self.user.username,
+            'password': self.password,
+        }, content_type='application/json')
+        refresh_token = token_response.json()['refresh']
+
+        api_client = APIClient()
+        api_client.force_authenticate(self.user)
+        changed = api_client.post(reverse('portal-password-change-api'), {
+            'current_password': self.password,
+            'new_password': 'NewSecure!9284',
+        }, format='json')
+        self.assertEqual(changed.status_code, 200)
+
+        refreshed = self.client.post(
+            '/api/v1/auth/token/refresh/',
+            {'refresh': refresh_token},
+            content_type='application/json',
+        )
+        self.assertEqual(refreshed.status_code, 401)
+
+    def test_portal_password_change_revokes_existing_refresh_tokens(self):
+        token_response = self.client.post('/api/v1/auth/token/', {
+            'username': self.user.username,
+            'password': self.password,
+        }, content_type='application/json')
+        refresh_token = token_response.json()['refresh']
+
+        self.client.force_login(self.user)
+        changed = self.client.post(reverse('portal-profile-page'), {
+            'action': 'password',
+            'old_password': self.password,
+            'new_password1': 'NewSecure!9284',
+            'new_password2': 'NewSecure!9284',
+        })
+        self.assertRedirects(changed, reverse('portal-profile-page'))
+
+        refreshed = self.client.post(
+            '/api/v1/auth/token/refresh/',
+            {'refresh': refresh_token},
+            content_type='application/json',
+        )
+        self.assertEqual(refreshed.status_code, 401)
+
+    def test_refresh_token_can_be_revoked_through_logout_endpoint(self):
+        token_response = self.client.post('/api/v1/auth/token/', {
+            'username': self.user.username,
+            'password': self.password,
+        }, content_type='application/json')
+        refresh_token = token_response.json()['refresh']
+
+        logout_response = self.client.post(
+            '/api/v1/auth/token/logout/',
+            {'refresh': refresh_token},
+            content_type='application/json',
+        )
+        self.assertEqual(logout_response.status_code, 200)
+
+        refreshed = self.client.post(
+            '/api/v1/auth/token/refresh/',
+            {'refresh': refresh_token},
+            content_type='application/json',
+        )
+        self.assertEqual(refreshed.status_code, 401)
+
     def test_inactive_account_cannot_sign_in(self):
         self.user.is_active = False
         self.user.save(update_fields=['is_active'])
@@ -67,6 +164,7 @@ class PortalAuthenticationTests(TestCase):
         paths = response.data['paths']
         self.assertTrue(any(path.startswith('/api/v1/settlement-') for path in paths))
         self.assertIn('/api/v1/auth/token/', paths)
+        self.assertIn('/api/v1/auth/token/logout/', paths)
         transaction_path = paths['/api/v1/settlement-transactions/{merchant_uid}']['post']
         self.assertIn('enables settlement transactions API access', transaction_path['description'])
         self.assertFalse(any(path.startswith('/api/portal/') for path in paths))
@@ -209,6 +307,49 @@ class PortalAuthenticationTests(TestCase):
 
 
 class SettlementLineStatusTests(SimpleTestCase):
+    @patch('apps.settlement_api.services.SourceContentType.objects')
+    @patch('apps.settlement_api.services.SettlementLine.objects')
+    @patch('apps.settlement_api.services.Merchant.objects')
+    def test_multi_merchant_settlement_report_loads_source_rows_in_batches(
+        self,
+        merchant_objects,
+        line_objects,
+        content_type_objects,
+    ):
+        content_type_objects.filter.return_value.values_list.return_value.first.return_value = 4
+        line = SimpleNamespace(
+            cr_account=SimpleNamespace(owner_id=31),
+            amount=Decimal('12.50'),
+            status='APPROVED',
+            approved_at=None,
+            batch=SimpleNamespace(
+                date_from=date(2026, 1, 1),
+                date_to=date(2026, 1, 31),
+            ),
+        )
+        line_objects.filter.return_value.only.return_value.select_related.return_value.order_by.return_value = [line]
+        merchant_objects.filter.return_value.values_list.return_value = [(31, 'North Star')]
+        portal_merchants = [
+            SimpleNamespace(merchant_uid='north', merchant_name='North Star'),
+            SimpleNamespace(merchant_uid='south', merchant_name='South Star'),
+        ]
+
+        results = compute_settlement_for_merchants(
+            portal_merchants,
+            date(2026, 1, 1),
+            date(2026, 1, 31),
+        )
+
+        self.assertEqual(len(results['north']), 1)
+        self.assertEqual(results['north'][0]['total_amount'], '12.50')
+        self.assertEqual(results['south'], [])
+        self.assertEqual(content_type_objects.filter.call_count, 1)
+        self.assertEqual(line_objects.filter.call_count, 1)
+        self.assertEqual(merchant_objects.filter.call_count, 1)
+        selected_fields = line_objects.filter.return_value.only.call_args.args
+        self.assertIn('cr_account__owner_id', selected_fields)
+        self.assertIn('cr_account__owner_type_id', selected_fields)
+
     @patch('apps.settlement_api.services.SourceContentType.objects')
     @patch('apps.settlement_api.services.SettlementLine.objects')
     @patch('apps.settlement_api.services.Merchant.objects')
@@ -435,6 +576,41 @@ class PortalVisibilityTests(TestCase):
         self.assertRedirects(response, reverse('portal-managed-accounts'))
         managed_user.refresh_from_db()
         self.assertTrue(managed_user.allow_settlement_transactions)
+
+    def test_manageable_merchant_access_query_count_does_not_scale_with_merchant_count(self):
+        admin = User.objects.create_user(
+            username='merchant-scope-admin',
+            password='AdminPassword!9284',
+            role=User.ROLE_ADMIN,
+        )
+        managed_user = User.objects.create_user(
+            username='merchant-scope-user',
+            password='UserPassword!9284',
+            role=User.ROLE_USER,
+            created_by=admin,
+        )
+        for index in range(3):
+            merchant = PortalMerchant.objects.create(
+                merchant_uid=f'merchant-scope-{index}',
+                merchant_name=f'Merchant Scope {index}',
+                created_by=admin,
+            )
+            UserMerchant.objects.create(user=managed_user, merchant=merchant)
+
+        merchants = list(PortalMerchant.objects.filter(merchant_uid__startswith='merchant-scope-'))
+        with self.assertNumQueries(2):
+            manageable_ids = manageable_merchant_ids(admin, merchants)
+
+        self.assertEqual(manageable_ids, {merchant.pk for merchant in merchants})
+
+    def test_user_merchant_access_is_checked_with_one_query_for_multiple_merchants(self):
+        merchants = [self.merchant, self.other_merchant]
+        UserMerchant.objects.create(user=self.user, merchant=self.other_merchant)
+
+        with self.assertNumQueries(1):
+            allowed_ids = merchant_access_ids(self.user, merchants)
+
+        self.assertEqual(allowed_ids, {self.merchant.pk, self.other_merchant.pk})
 
     def test_user_without_transaction_api_access_is_denied(self):
         api_client = APIClient()

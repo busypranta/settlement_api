@@ -7,14 +7,18 @@ from rest_framework.views import APIView
 
 from apps.accounts.models import User
 from apps.merchants.models import PortalMerchant
-from .permissions import merchant_is_allowed
+from .permissions import merchant_access_ids, merchant_is_allowed
 from .serializers import (
     DateRangeSerializer,
     MultiMerchantReportSerializer,
     PageNumberSerializer,
     SettlementReportDateRangeSerializer,
 )
-from .services import approved_settlement_batch_ids_for_merchant, compute_settlement_for_merchant
+from .services import (
+    approved_settlement_batch_ids_for_merchant,
+    compute_settlement_for_merchant,
+    compute_settlement_for_merchants,
+)
 from .source_models import OwnTransaction
 
 
@@ -41,20 +45,27 @@ class SettlementReportMultiView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        result = []
+        allowed_merchant_ids = merchant_access_ids(request.user, merchants_by_uid.values())
         for merchant_uid in data['merchants']:
             merchant = merchants_by_uid[merchant_uid]
-            if not merchant_is_allowed(request.user, merchant):
+            if merchant.pk not in allowed_merchant_ids:
                 return Response(
                     {'success': False, 'error': 'Not authorized for this merchant'},
                     status=status.HTTP_403_FORBIDDEN,
                 )
+
+        settlements_by_merchant = compute_settlement_for_merchants(
+            merchants_by_uid.values(),
+            data['from_date'],
+            data['to_date'],
+        )
+        result = []
+        for merchant_uid in data['merchants']:
+            merchant = merchants_by_uid[merchant_uid]
             result.append({
                 'merchant_uid': merchant.merchant_uid,
                 'merchant_name': merchant.merchant_name,
-                'settlements': compute_settlement_for_merchant(
-                    merchant, data['from_date'], data['to_date'],
-                ),
+                'settlements': settlements_by_merchant[merchant_uid],
             })
         return Response({'success': True, 'data': result})
 
