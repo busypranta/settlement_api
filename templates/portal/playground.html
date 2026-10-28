@@ -26,7 +26,7 @@
             <div class="form-field">
               <label for="playground-endpoint">API endpoint</label><select id="playground-endpoint" class="form-control">
                 <option value="report">Settlement Report</option>
-                <option value="transactions">Transactions</option>
+                {% if can_use_settlement_transactions_api %}<option value="transactions">Transactions</option>{% endif %}
                 {% if can_use_multi_merchant_api %}<option value="multi-report">Settlement Report · Multiple</option>{% endif %}
               </select>
             </div>
@@ -40,7 +40,7 @@
             </div>
           </div>
           <div class="playground-route">
-            <span>POST</span><code id="playground-route">/v1/api/settlement-report/{merchant_uid}</code>
+            <span>POST</span><code id="playground-route">/api/v1/settlement-report/{merchant_uid}</code>
           </div>
           <fieldset class="form-field multi-merchant-field" id="multi-merchant-field" hidden>
             <legend>Merchants</legend>
@@ -135,13 +135,13 @@
       let accessToken = null
     
       const requestPath = () => {
-        if (endpoint.value === 'multi-report') return '/v1/api/settlement-report'
+        if (endpoint.value === 'multi-report') return '/api/v1/settlement-report'
         const merchant = encodeURIComponent(document.getElementById('playground-merchant').value)
         if (endpoint.value === 'transactions') {
           const page = encodeURIComponent(document.getElementById('playground-page').value || '1')
-          return `/v1/api/settlement-transactions/${merchant}?page=${page}`
+          return `/api/v1/settlement-transactions/${merchant}?page=${page}`
         }
-        return `/v1/api/settlement-report/${merchant}`
+        return `/api/v1/settlement-report/${merchant}`
       }
       const updateRoutePreview = () => {
         routePreview.textContent = requestPath()
@@ -268,7 +268,7 @@
           if (!accessToken) {
             const password = passwordInput.value
             passwordInput.value = ''
-            const tokenResponse = await fetch('/api/auth/token/', {
+            const tokenResponse = await fetch('/api/v1/auth/token/', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ username: form.dataset.apiUsername, password })

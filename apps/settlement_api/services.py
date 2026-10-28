@@ -14,7 +14,7 @@ def get_merchant_owner_from_line(line):
     if content_type.app_label != 'merchants' or content_type.model != 'merchant':
         return None
 
-    return Merchant.objects.using('source').filter(pk=account.owner_id).first()
+    return Merchant.objects.filter(pk=account.owner_id).first()
 
 
 def approved_settlement_batch_ids_for_merchant(portal_merchant, batch_ids):
@@ -22,7 +22,7 @@ def approved_settlement_batch_ids_for_merchant(portal_merchant, batch_ids):
         return set()
 
     merchant_content_type_id = (
-        SourceContentType.objects.using('source')
+        SourceContentType.objects
         .filter(app_label='merchants', model='merchant')
         .values_list('id', flat=True)
         .first()
@@ -31,7 +31,7 @@ def approved_settlement_batch_ids_for_merchant(portal_merchant, batch_ids):
         return set()
 
     line_data = list(
-        SettlementLine.objects.using('source')
+        SettlementLine.objects
         .filter(
             batch_id__in=batch_ids,
             cr_account__owner_type_id=merchant_content_type_id,
@@ -41,7 +41,7 @@ def approved_settlement_batch_ids_for_merchant(portal_merchant, batch_ids):
     owner_ids = {owner_id for _, _, owner_id in line_data}
     merchants_by_id = {
         merchant.pk: merchant
-        for merchant in Merchant.objects.using('source').filter(pk__in=owner_ids)
+        for merchant in Merchant.objects.filter(pk__in=owner_ids)
     }
     merchant_name_key = normalize_name_key(portal_merchant.merchant_name)
     approved_batch_ids = set()
@@ -58,7 +58,7 @@ def approved_settlement_batch_ids_for_merchant(portal_merchant, batch_ids):
 
 def compute_settlement_for_merchant(portal_merchant, from_date, to_date):
     merchant_content_type_id = (
-        SourceContentType.objects.using('source')
+        SourceContentType.objects
         .filter(app_label='merchants', model='merchant')
         .values_list('id', flat=True)
         .first()
@@ -69,7 +69,7 @@ def compute_settlement_for_merchant(portal_merchant, from_date, to_date):
     merchant_name_key = normalize_name_key(portal_merchant.merchant_name)
     results = []
     lines = (
-        SettlementLine.objects.using('source')
+        SettlementLine.objects
         .filter(
             cr_account__owner_type_id=merchant_content_type_id,
             batch__date_from__gte=from_date,
@@ -90,7 +90,7 @@ def compute_settlement_for_merchant(portal_merchant, from_date, to_date):
     owner_ids = {line.cr_account.owner_id for line in lines}
     merchants_by_id = {
         merchant.pk: merchant
-        for merchant in Merchant.objects.using('source').filter(pk__in=owner_ids)
+        for merchant in Merchant.objects.filter(pk__in=owner_ids)
     }
 
     for line in lines:

@@ -11,7 +11,7 @@ def normalize_bd_mobile(value):
     mobile = re.sub(r'[\s-]', '', value or '')
     if not _BD_MOBILE_PATTERN.fullmatch(mobile):
         raise ValidationError(
-            _('Enter a valid Bangladesh mobile number, such as 01XXXXXXXXX or +8801XXXXXXXXX.'),
+            _('Enter a valid BD mobile number, such as 01XXXXXXXXX or +8801XXXXXXXXX.'),
             code='invalid_mobile',
         )
     if mobile.startswith('01'):
@@ -30,12 +30,12 @@ class MaximumLengthValidator:
     def validate(self, password, user=None):
         if len(password) > self.max_length:
             raise ValidationError(
-                _('This password is too long. It must contain no more than %(max_length)s characters.'),
+                _('This password is too long. It must contain less than %(max_length)s characters.'),
                 code='password_too_long',
                 params={'max_length': self.max_length},
             )
 
     def get_help_text(self):
-        return _('Your password must contain no more than %(max_length)s characters.') % {
+        return _('Your password must contain less than %(max_length)s characters.') % {
             'max_length': self.max_length,
         }

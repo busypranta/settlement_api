@@ -19,6 +19,7 @@ class User(AbstractUser):
     mobile = models.CharField(max_length=16, blank=True, validators=[validate_bd_mobile])
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default=ROLE_USER)
     allow_multiple_merchants = models.BooleanField(default=False)
+    allow_settlement_transactions = models.BooleanField(default=False)
     created_by = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='created_users')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -26,10 +26,9 @@ class HealthView(APIView):
 
     def get(self, request):
         try:
-            for alias in ('default', 'source'):
-                with connections[alias].cursor() as cursor:
-                    cursor.execute('SELECT 1 FROM DUAL')
-                    cursor.fetchone()
+            with connections['default'].cursor() as cursor:
+                cursor.execute('SELECT 1 FROM DUAL')
+                cursor.fetchone()
         except DatabaseError:
             return Response({'status': 'unavailable'}, status=503)
         return Response({'status': 'ok'})
@@ -37,9 +36,9 @@ class HealthView(APIView):
 urlpatterns = [
     path('health/', HealthView.as_view(), name='health'),
     path('admin/', admin.site.urls),
-    path('api/auth/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('api/auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-    path('api/auth/token/verify/', TokenVerifyView.as_view(), name='token_verify'),
+    path('api/v1/auth/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/v1/auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/v1/auth/token/verify/', TokenVerifyView.as_view(), name='token_verify'),
     path('api/schema/', RoleFilteredSchemaView.as_view(
         authentication_classes=DOC_AUTHENTICATION,
         permission_classes=DOC_PERMISSIONS,
@@ -49,7 +48,7 @@ urlpatterns = [
         authentication_classes=DOC_AUTHENTICATION,
         permission_classes=DOC_PERMISSIONS,
     ), name='swagger-ui'),
-    path('v1/api/', include('apps.settlement_api.urls')),
+    path('api/v1/', include('apps.settlement_api.urls')),
     path('api/portal/', include('apps.accounts.urls_api')),
     path('portal/', include('apps.accounts.urls_web')),
     path('', RedirectView.as_view(url='/portal/', permanent=False)),

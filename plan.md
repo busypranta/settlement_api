@@ -44,7 +44,7 @@ The portal must **not** modify the existing application's source tables. It must
 | Authentication | JWT via `djangorestframework-simplejwt` (access token lifetime = 120 minutes) |
 | API docs | OpenAPI/Swagger via `drf-spectacular` (protected by portal auth as appropriate) |
 | Database | Oracle Database 19c |
-| Database access | Separate portal and source-schema credentials/configuration (two Oracle connections) |
+| Database access | One Oracle connection using the portal account with source-object read-only grants |
 | Deployment | Docker and a separate Docker Compose project (separate from existing `docker-compose.yml`) |
 | Testing | Django/DRF tests, Oracle integration tests, authorization tests |
 
@@ -304,14 +304,14 @@ Public registration remains unavailable.
 
 ## 10. API endpoints
 
-All endpoint paths are versioned under `/v1/api/`. Dates in request/response examples use `dd-mm-yyyy`, per the existing specification. Validate that `from_date` is not later than `to_date`.
+All business and authentication endpoint paths are versioned under `/api/v1/`. Dates in request/response examples use `dd-mm-yyyy`, per the existing specification. Validate that `from_date` is not later than `to_date`.
 
 ### 10.1 Multi-merchant settlement report
 
 **Endpoint**
 
 ```http
-POST /v1/api/settlement-report
+POST /api/v1/settlement-report
 Authorization: Bearer <access_token>
 Content-Type: application/json
 ```
@@ -366,7 +366,7 @@ The requested date range filters lines by the related batch's `date_from` (inclu
 **Endpoint**
 
 ```http
-POST /v1/api/settlement-report/{merchantUID}
+POST /api/v1/settlement-report/{merchantUID}
 Authorization: Bearer <access_token>
 Content-Type: application/json
 ```
@@ -387,7 +387,7 @@ The result has the same response structure as the multi-merchant report, but con
 **Endpoint**
 
 ```http
-POST /v1/api/settlement-transactions/{merchantUID}?page=1
+POST /api/v1/settlement-transactions/{merchantUID}?page=1
 Authorization: Bearer <access_token>
 Content-Type: application/json
 ```
@@ -408,6 +408,7 @@ Content-Type: application/json
 - Restrict results to transactions assigned to eligible batches (`PARTIAL` or `COMPLETED` by default).
 - Return `merchant_amount` as the API amount, not `OwnTransaction.amount`.
 - Paginate with a maximum page size of 200. Validate `page` as a positive integer and define a deterministic ordering, preferably `txn_datetime` plus the transaction primary key as a tie-breaker.
+- USER accounts can call this endpoint only when a SUPERADMIN or scoped ADMIN enables transaction API access for that account.
 - Use the source transaction date (`OwnTransaction.txn_datetime`) for transaction-date filtering unless the business owner explicitly chooses to filter this endpoint by the associated batch period instead. Settlement summary endpoints use the batch business-period dates.
 
 **Illustrative response**
@@ -435,11 +436,11 @@ For this endpoint, `amount` is the serialized `OwnTransaction.merchant_amount`. 
 
 ### 10.4 JWT endpoints
 
-The authentication endpoints should be documented alongside the business APIs. Suggested endpoints, subject to implementation conventions:
+The authentication endpoints are documented alongside the business APIs:
 
-- `POST /api/auth/token/` — authenticate and issue JWT tokens.
-- `POST /api/auth/token/refresh/` — issue a new access token according to the configured refresh policy.
-- `POST /api/auth/token/verify/` — optionally verify token validity.
+- `POST /api/v1/auth/token/` — authenticate and issue JWT tokens.
+- `POST /api/v1/auth/token/refresh/` — issue a new access token according to the configured refresh policy.
+- `POST /api/v1/auth/token/verify/` — optionally verify token validity.
 
 The business APIs require an `Authorization: Bearer <access_token>` header.
 
@@ -635,7 +636,7 @@ Operational requirements:
 ### Phase 2 — Project skeleton and portal schema
 
 - Create a separate Django project (e.g., `merchant-settlement-portal/`) outside or alongside this repo with its own `manage.py`. Structure as suggested in §16.
-- Configure two Oracle database connections in settings (portal read/write, source read-only). Add a database router to enforce `managed = False` for source models and block writes to source DB.
+- Configure one Oracle connection for portal and source models. Keep source models unmanaged and grant the portal account only `SELECT` on source objects.
 - Create unmanaged Django models for source tables (`SettlementBatch`, `SettlementLine`, `BankAccount`, `AccountOwner`, `Merchant`/`Vendor`/`Processor` as needed for resolution, `OwnTransaction`, `ContentType`) mapped to correct `db_table` names from this repo/migrations.
 - Implement the custom portal user model (`PORTAL_USER` equivalent) and portal-owned tables: `PORTAL_ADMIN_USER_ASSIGNMENT`, `PORTAL_MERCHANT`, `PORTAL_USER_MERCHANT`, `PORTAL_API_LOG`, `PORTAL_AUDIT_LOG`.
 - Configure migrations to affect only the portal schema.
@@ -666,7 +667,7 @@ Operational requirements:
 - Implement settlement-line owner resolution via `SettlementLine.cr_account` → `BankAccount.owner` (GenericForeignKey) filtered to `Merchant` owners; map to portal `PORTAL_MERCHANT` via normalized merchant name key.
 - Filter each settlement line by its related batch `date_from` in the requested inclusive range, without filtering on batch status; return one item per line and use batch dates for `transaction_period`.
 - Compute amounts and status per line using `SettlementLine.status`: `APPROVED` → `SUCCESS`, all other statuses → `PENDING`; `paid_amount` is the line amount only for `APPROVED`.
-- Implement all three versioned endpoints under `/v1/api/` with proper auth/merchant authorization.
+- Implement all three versioned endpoints under `/api/v1/` with proper auth/merchant authorization.
 - For transactions: filter by `OwnTransaction.txn_datetime` in range, require `settlement_batch` non-null and batch in eligible statuses, match merchant by `merchant_name` to portal merchant, return `merchant_amount` as `amount`, paginate max 200 ordered by `txn_datetime`, `id` (tie-breaker), and mark each transaction `SUCCESS` only when an `APPROVED` settlement line for that merchant exists in its batch; otherwise return `PENDING`.
 - Add pagination, consistent errors, OpenAPI docs (drf-spectacular), and API request logging to `PORTAL_API_LOG` (no secrets/financial payloads).
 

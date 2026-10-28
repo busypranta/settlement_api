@@ -72,7 +72,7 @@
     </form>
   </div>
   {% if users %}
-  <div class="table-wrap"><table><thead><tr><th>User</th><th>Role</th><th>Merchant assignments</th><th>Multiple-merchant API</th><th>Status</th><th>Joined</th><th>Manage</th></tr></thead><tbody>
+  <div class="table-wrap"><table><thead><tr><th>User</th><th>Role</th><th>Merchant assignments</th><th>Multiple-merchant API</th><th>Transactions API</th><th>Status</th><th>Joined</th><th>Manage</th></tr></thead><tbody>
   {% for account in users %}
     <tr>
       <td><div class="table-user"><span class="mini-avatar">{{ account.get_full_name|slice:":1"|upper }}</span><span><strong>{{ account.get_full_name }}</strong><small>{{ account.email|default:account.username }}{% if account.mobile %} · {{ account.mobile }}{% endif %}</small></span></div></td>
@@ -86,6 +86,14 @@
           {% csrf_token %}<input type="hidden" name="action" value="toggle_multi_merchant_access"><input type="hidden" name="user_id" value="{{ account.id }}">
           <button class="access-toggle {% if account.allow_multiple_merchants %}enabled{% endif %}" type="submit" aria-label="{% if account.allow_multiple_merchants %}Disable{% else %}Enable{% endif %} multi-merchant API access for {{ account.username }}">
             {% if account.allow_multiple_merchants %}Enabled{% else %}Disabled{% endif %}
+          </button>
+        </form>
+      {% else %}<span class="table-secondary">Not applicable</span>{% endif %}</td>
+      <td>{% if account.role == 'USER' %}
+        <form method="post" class="access-toggle-form" data-confirm="{% if account.allow_settlement_transactions %}Disable{% else %}Enable{% endif %} settlement transactions API access for {{ account.username }}?">
+          {% csrf_token %}<input type="hidden" name="action" value="toggle_settlement_transactions"><input type="hidden" name="user_id" value="{{ account.id }}">
+          <button class="access-toggle {% if account.allow_settlement_transactions %}enabled{% endif %}" type="submit" aria-label="{% if account.allow_settlement_transactions %}Disable{% else %}Enable{% endif %} settlement transactions API access for {{ account.username }}">
+            {% if account.allow_settlement_transactions %}Enabled{% else %}Disabled{% endif %}
           </button>
         </form>
       {% else %}<span class="table-secondary">Not applicable</span>{% endif %}</td>

@@ -14,9 +14,6 @@ RUN SECRET_KEY=build-only-secret \
     PORTAL_ORACLE_DSN=localhost:1521/portal \
     PORTAL_ORACLE_USER=build_user \
     PORTAL_ORACLE_PASSWORD=build_password \
-    SOURCE_ORACLE_DSN=localhost:1521/source \
-    SOURCE_ORACLE_USER=build_user \
-    SOURCE_ORACLE_PASSWORD=build_password \
     python manage.py collectstatic --noinput
 
 EXPOSE 8000

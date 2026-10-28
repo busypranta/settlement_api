@@ -38,7 +38,7 @@ class PortalAuthenticationTests(TestCase):
         )
         self.assertRedirects(response, reverse('portal-dashboard'))
         token_response = self.client.post(
-            '/api/auth/token/',
+            '/api/v1/auth/token/',
             {'username': self.user.username, 'password': self.password},
             content_type='application/json',
         )
@@ -65,7 +65,10 @@ class PortalAuthenticationTests(TestCase):
         response = self.client.get('/api/schema/')
         self.assertEqual(response.status_code, 200)
         paths = response.data['paths']
-        self.assertTrue(any(path.startswith('/v1/api/settlement-') for path in paths))
+        self.assertTrue(any(path.startswith('/api/v1/settlement-') for path in paths))
+        self.assertIn('/api/v1/auth/token/', paths)
+        transaction_path = paths['/api/v1/settlement-transactions/{merchant_uid}']['post']
+        self.assertIn('enables settlement transactions API access', transaction_path['description'])
         self.assertFalse(any(path.startswith('/api/portal/') for path in paths))
 
     def test_superadmin_schema_includes_portal_management_apis(self):
@@ -91,7 +94,7 @@ class PortalAuthenticationTests(TestCase):
         response = self.client.get('/api/schema/')
         self.assertEqual(response.status_code, 200)
         paths = response.data['paths']
-        self.assertTrue(any(path.startswith('/v1/api/settlement-') for path in paths))
+        self.assertTrue(any(path.startswith('/api/v1/settlement-') for path in paths))
         self.assertFalse(any(path.startswith('/api/portal/') for path in paths))
 
     def test_login_uses_settlement_portal_branding(self):
@@ -215,13 +218,13 @@ class SettlementLineStatusTests(SimpleTestCase):
         line_objects,
         content_type_objects,
     ):
-        content_type_objects.using.return_value.filter.return_value.values_list.return_value.first.return_value = 4
-        line_objects.using.return_value.filter.return_value.values_list.return_value = [
+        content_type_objects.filter.return_value.values_list.return_value.first.return_value = 4
+        line_objects.filter.return_value.values_list.return_value = [
             (10, 'APPROVED', 101),
             (11, 'DRAFT', 101),
             (12, 'APPROVED', 202),
         ]
-        merchant_objects.using.return_value.filter.return_value = [
+        merchant_objects.filter.return_value = [
             type('SourceMerchant', (), {'pk': 101, 'name': 'Visible Merchant'})(),
             type('SourceMerchant', (), {'pk': 202, 'name': 'Other Merchant'})(),
         ]
@@ -236,7 +239,7 @@ class SettlementLineStatusTests(SimpleTestCase):
 
 class ApiJsonResponseMiddlewareTests(TestCase):
     def test_api_debug_html_errors_are_returned_as_json(self):
-        for path in ('/v1/api/settlement-report/merchant', '/api/auth/token/'):
+        for path in ('/api/v1/settlement-report/merchant', '/api/v1/auth/token/'):
             with self.subTest(path=path):
                 request = RequestFactory().post(path)
                 middleware = APILogMiddleware(
@@ -254,7 +257,7 @@ class ApiJsonResponseMiddlewareTests(TestCase):
                 self.assertEqual(json.loads(response.content)['request_id'], response['X-Request-ID'])
 
     def test_api_json_responses_are_not_rewritten(self):
-        request = RequestFactory().post('/v1/api/settlement-report/merchant')
+        request = RequestFactory().post('/api/v1/settlement-report/merchant')
         api_response = DRFResponse({'success': True, 'data': []})
         api_response.accepted_renderer = type('JSONRenderer', (), {'media_type': 'application/json'})()
         middleware = APILogMiddleware(lambda request: api_response)
@@ -289,14 +292,14 @@ class PortalVisibilityTests(TestCase):
         ApiLog.objects.create(
             user=self.user,
             request_id='visible-request-id',
-            endpoint='/v1/api/settlement-report',
+            endpoint='/api/v1/settlement-report',
             http_method='POST',
             http_status=200,
         )
         ApiLog.objects.create(
             user=self.other_user,
             request_id='hidden-request-id',
-            endpoint='/v1/api/private',
+            endpoint='/api/v1/private',
             http_method='POST',
             http_status=200,
         )
@@ -319,13 +322,24 @@ class PortalVisibilityTests(TestCase):
         self.assertContains(playground, 'Test an API call')
         self.assertContains(playground, self.merchant.merchant_uid)
         self.assertNotContains(playground, self.other_merchant.merchant_uid)
-        self.assertContains(playground, '/api/auth/token/')
+        self.assertContains(playground, '/api/v1/auth/token/')
+        self.assertNotContains(playground, '<option value="transactions">Transactions</option>')
         self.assertContains(playground, 'merchant-picker-search')
         self.assertContains(playground, 'merchant-picker-option')
         self.assertContains(playground, 'merchant-picker-selection')
         self.assertContains(playground, 'merchant-visible-count')
         self.assertNotContains(playground, 'merchant-picker-trigger')
         self.assertNotContains(playground, '<select id="playground-merchants"')
+
+    def test_playground_shows_transactions_only_when_enabled_for_user(self):
+        self.client.force_login(self.user)
+        disabled = self.client.get(reverse('portal-api-playground'))
+        self.assertNotContains(disabled, '<option value="transactions">Transactions</option>')
+
+        self.user.allow_settlement_transactions = True
+        self.user.save(update_fields=['allow_settlement_transactions'])
+        enabled = self.client.get(reverse('portal-api-playground'))
+        self.assertContains(enabled, '<option value="transactions">Transactions</option>')
 
     def test_playground_shows_multi_merchant_mode_only_when_enabled(self):
         UserMerchant.objects.create(user=self.user, merchant=self.other_merchant)
@@ -341,7 +355,7 @@ class PortalVisibilityTests(TestCase):
     def test_user_without_multi_merchant_permission_is_denied_multi_report_api(self):
         api_client = APIClient()
         api_client.force_authenticate(self.user)
-        response = api_client.post('/v1/api/settlement-report', {}, format='json')
+        response = api_client.post('/api/v1/settlement-report', {}, format='json')
         self.assertEqual(response.status_code, 403)
         self.assertEqual(
             response.json()['error'],
@@ -352,17 +366,17 @@ class PortalVisibilityTests(TestCase):
         api_client = APIClient()
         api_client.force_authenticate(self.user)
         response = api_client.post(
-            '/v1/api/settlement-report/merchant-visible',
+            '/api/v1/settlement-report/merchant-visible',
             {'from_date': '01-01-2026', 'to_date': '02-03-2026'},
             format='json',
         )
         self.assertEqual(response.status_code, 400)
 
     @patch('apps.settlement_api.views.approved_settlement_batch_ids_for_merchant')
-    @patch('apps.settlement_api.views.OwnTransaction.objects.using')
+    @patch('apps.settlement_api.views.OwnTransaction.objects.filter')
     def test_transaction_status_uses_approved_merchant_line_in_its_batch(
         self,
-        source_using,
+        transaction_filter,
         approved_batch_lookup,
     ):
         transaction = SimpleNamespace(
@@ -370,21 +384,23 @@ class PortalVisibilityTests(TestCase):
             merchant_amount=Decimal('6500.00'),
             settlement_batch_id=55,
         )
-        queryset = source_using.return_value.filter.return_value.order_by.return_value
+        queryset = transaction_filter.return_value.order_by.return_value
         queryset.count.return_value = 1
         queryset.__getitem__.return_value = [transaction]
         approved_batch_lookup.side_effect = [{55}, set()]
 
         api_client = APIClient()
         api_client.force_authenticate(self.user)
+        self.user.allow_settlement_transactions = True
+        self.user.save(update_fields=['allow_settlement_transactions'])
         request_data = {'from_date': '01-01-2026', 'to_date': '01-03-2026'}
         success = api_client.post(
-            '/v1/api/settlement-transactions/merchant-visible',
+            '/api/v1/settlement-transactions/merchant-visible',
             request_data,
             format='json',
         )
         pending = api_client.post(
-            '/v1/api/settlement-transactions/merchant-visible',
+            '/api/v1/settlement-transactions/merchant-visible',
             request_data,
             format='json',
         )
@@ -412,6 +428,27 @@ class PortalVisibilityTests(TestCase):
         self.assertRedirects(response, reverse('portal-managed-accounts'))
         managed_user.refresh_from_db()
         self.assertTrue(managed_user.allow_multiple_merchants)
+        response = self.client.post(reverse('portal-managed-accounts'), {
+            'action': 'toggle_settlement_transactions',
+            'user_id': managed_user.pk,
+        })
+        self.assertRedirects(response, reverse('portal-managed-accounts'))
+        managed_user.refresh_from_db()
+        self.assertTrue(managed_user.allow_settlement_transactions)
+
+    def test_user_without_transaction_api_access_is_denied(self):
+        api_client = APIClient()
+        api_client.force_authenticate(self.user)
+        response = api_client.post(
+            '/api/v1/settlement-transactions/merchant-visible',
+            {'from_date': '01-01-2026', 'to_date': '02-01-2026'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(
+            response.json()['error'],
+            'Settlement transactions API access is not enabled for this account',
+        )
 
     def test_authenticated_workspace_pages_render(self):
         self.client.force_login(self.user)

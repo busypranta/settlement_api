@@ -64,21 +64,13 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 
 DATABASES = {
-    'default': {  # portal schema (read/write)
+    'default': {
         'ENGINE': 'django.db.backends.oracle',
         'NAME': env('PORTAL_ORACLE_DSN'),
         'USER': env('PORTAL_ORACLE_USER'),
         'PASSWORD': env('PORTAL_ORACLE_PASSWORD'),
     },
-    'source': {  # source schema (read-only)
-        'ENGINE': 'django.db.backends.oracle',
-        'NAME': env('SOURCE_ORACLE_DSN'),
-        'USER': env('SOURCE_ORACLE_USER'),
-        'PASSWORD': env('SOURCE_ORACLE_PASSWORD'),
-    },
 }
-
-DATABASE_ROUTERS = ['core.routers.SourceReadOnlyRouter']
 
 AUTH_USER_MODEL = 'accounts.User'
 

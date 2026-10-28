@@ -14,7 +14,7 @@ class APILogMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        api_path = request.path.startswith(('/v1/api/', '/api/portal/', '/api/auth/'))
+        api_path = request.path.startswith(('/api/v1/', '/api/portal/'))
         if api_path:
             start = time.perf_counter()
             request_id = str(uuid.uuid4())
@@ -65,9 +65,12 @@ class APILogMiddleware:
             result_count = len(result_data) if isinstance(result_data, (list, tuple)) else None
             merchant_uid = None
             path_parts = request.path.strip('/').split('/')
-            if len(path_parts) == 4 and path_parts[:2] == ['v1', 'api']:
-                if path_parts[2] in ('settlement-report', 'settlement-transactions'):
-                    merchant_uid = path_parts[3]
+            if (
+                len(path_parts) == 4
+                and path_parts[:2] == ['api', 'v1']
+                and path_parts[2] in ('settlement-report', 'settlement-transactions')
+            ):
+                merchant_uid = path_parts[3]
             page_number = None
             page_value = request.GET.get('page')
             if page_value and page_value.isdecimal():

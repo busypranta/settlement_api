@@ -1,4 +1,5 @@
 from django.shortcuts import get_object_or_404
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -83,7 +84,22 @@ class SettlementReportSingleView(APIView):
 class SettlementTransactionsView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        description=(
+            'USER accounts can access this endpoint only when a SUPERADMIN or '
+            'scoped ADMIN enables settlement transactions API access for the account.'
+        ),
+    )
     def post(self, request, merchant_uid):
+        if (
+            request.user.role == User.ROLE_USER
+            and not request.user.allow_settlement_transactions
+        ):
+            return Response(
+                {'success': False, 'error': 'Settlement transactions API access is not enabled for this account'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         date_serializer = DateRangeSerializer(data=request.data)
         date_serializer.is_valid(raise_exception=True)
         page_serializer = PageNumberSerializer(data={'page': request.query_params.get('page', 1)})
@@ -98,7 +114,7 @@ class SettlementTransactionsView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        queryset = OwnTransaction.objects.using('source').filter(
+        queryset = OwnTransaction.objects.filter(
             merchant_name__iexact=merchant.merchant_name,
             settlement_batch__isnull=False,
             settlement_batch__status__in=('PARTIAL', 'COMPLETED'),

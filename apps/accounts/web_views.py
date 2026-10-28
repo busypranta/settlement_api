@@ -118,9 +118,14 @@ def api_playground(request):
         request.user.role != User.ROLE_USER
         or request.user.allow_multiple_merchants
     )
+    can_use_settlement_transactions_api = (
+        request.user.role != User.ROLE_USER
+        or request.user.allow_settlement_transactions
+    )
     return render(request, 'portal/playground.html', {
         'playground_merchants': merchants,
         'can_use_multi_merchant_api': can_use_multi_merchant_api and len(merchants) > 1,
+        'can_use_settlement_transactions_api': can_use_settlement_transactions_api,
     })
 
 @login_required
@@ -302,6 +307,28 @@ def managed_accounts(request):
                 )
                 state = 'enabled' if account.allow_multiple_merchants else 'disabled'
                 messages.success(request, f'Multiple-merchant API access is {state} for {account.username}.')
+                return redirect('portal-managed-accounts')
+
+        elif action == 'toggle_settlement_transactions':
+            account = User.objects.filter(pk=request.POST.get('user_id')).first()
+            if (
+                account is None
+                or not can_manage_user(request.user, account)
+                or account.role != User.ROLE_USER
+            ):
+                messages.error(request, 'That account is outside your transaction API access scope.')
+            else:
+                account.allow_settlement_transactions = not account.allow_settlement_transactions
+                account.save(update_fields=['allow_settlement_transactions', 'updated_at'])
+                audit_action(
+                    request,
+                    'user.settlement_transactions_enabled'
+                    if account.allow_settlement_transactions
+                    else 'user.settlement_transactions_disabled',
+                    account,
+                )
+                state = 'enabled' if account.allow_settlement_transactions else 'disabled'
+                messages.success(request, f'Settlement transactions API access is {state} for {account.username}.')
                 return redirect('portal-managed-accounts')
 
         elif action == 'reset_password':
