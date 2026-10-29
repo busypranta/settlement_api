@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="{% static 'portal/portal.css' %}">
 </head>
 <body class="portal-shell">
+  <div class="nav-overlay"></div>
   <aside class="sidebar">
     <a class="brand" href="{% url 'portal-dashboard' %}">
       <span class="brand-mark">S</span>
@@ -75,6 +76,19 @@
     </div>
   </dialog>
   <script>
+    document.addEventListener('click', (event) => {
+      if (event.target.classList.contains('nav-overlay')) {
+        document.body.classList.remove('nav-open');
+      }
+    });
+    document.querySelectorAll('.side-nav a').forEach((link) => {
+      link.addEventListener('click', () => {
+        if (window.innerWidth <= 980) {
+          document.body.classList.remove('nav-open');
+        }
+      });
+    });
+
     const adminScopeSearch = document.querySelector('[data-admin-scope-search]');
     if (adminScopeSearch) {
       adminScopeSearch.addEventListener('input', () => {

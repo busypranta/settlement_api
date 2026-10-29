@@ -6,3 +6,5 @@ oracledb>=2.5
 django-environ>=0.11
 whitenoise>=6.7
 gunicorn>=22.0
+django-axes>=6.4
+django-csp>=3.8
