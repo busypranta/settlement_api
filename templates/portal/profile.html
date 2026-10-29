@@ -32,7 +32,7 @@
             {% endfor %}
           </div>
         {% endfor %}
-        <button class="button button-primary" type="submit">Save changes <span>→</span></button>
+        <button class="button button-primary" type="submit">Save Changes <span>→</span></button>
       </form>
     </section>
     <section class="panel profile-panel">
@@ -45,36 +45,58 @@
         {% csrf_token %}
         <input type="hidden" name="action" value="password" />
         {{ password_form.non_field_errors }}
-        {% for field in password_form %}
-          <div class="form-field">
-            <label for="{{ field.id_for_label }}">{{ field.label }}</label>{% if field.name == 'new_password1' %}
-              <div class="password-input-row">
-                <div class="password-field-wrap">
-                  {{ field }}
-                  <button class="password-toggle" type="button" aria-label="Show password" data-target="{{ field.id_for_label }}">👁</button>
-                </div>
-                <div class="password-strength" data-strength-for="{{ field.id_for_label }}" aria-live="polite">
-                  <div class="strength-track">
-                    <span></span><span></span><span></span><span></span>
-                  </div><span class="strength-label">8–16 characters <strong>Not entered</strong></span>
-                </div>
-              </div>
-            {% elif field.name == 'new_password2' or field.name == 'old_password' %}
-              <div class="password-field-wrap">
-                {{ field }}
-                <button class="password-toggle" type="button" aria-label="Show password" data-target="{{ field.id_for_label }}">👁</button>
-              </div>
-            {% else %}
-              {{ field }}
-            {% endif %}            {% if field.help_text %}
-              <div class="password-hint">{{ field.help_text }}</div>
-            {% endif %}
-            {% for error in field.errors %}
-              <span class="field-error">{{ error }}</span>
-            {% endfor %}
+        <!-- Current Password -->
+        <div class="form-field">
+          <label for="{{ password_form.old_password.id_for_label }}">{{ password_form.old_password.label }}</label>
+          <div class="password-field-wrap">
+            {{ password_form.old_password }}
+            <button class="password-toggle" type="button" aria-label="Show password" data-target="{{ password_form.old_password.id_for_label }}">👁</button>
           </div>
-        {% endfor %}
-        <button class="button button-dark" type="submit">Update password <span>→</span></button>
+          {% if password_form.old_password.help_text %}
+            <div class="password-hint">{{ password_form.old_password.help_text }}</div>
+          {% endif %}
+          {% for error in password_form.old_password.errors %}
+            <span class="field-error">{{ error }}</span>
+          {% endfor %}
+        </div>
+
+        <!-- New Password 1 -->
+        <div class="form-field">
+          <label for="{{ password_form.new_password1.id_for_label }}">{{ password_form.new_password1.label }}</label>
+          <div class="password-field-wrap">
+            {{ password_form.new_password1 }}
+            <button class="password-toggle" type="button" aria-label="Show password" data-target="{{ password_form.new_password1.id_for_label }}">👁</button>
+          </div>
+          {% if password_form.new_password1.help_text %}
+            <div class="password-hint">{{ password_form.new_password1.help_text }}</div>
+          {% endif %}
+          {% for error in password_form.new_password1.errors %}
+            <span class="field-error">{{ error }}</span>
+          {% endfor %}
+        </div>
+
+        <!-- New Password 2 (Confirm) -->
+        <div class="form-field">
+          <label for="{{ password_form.new_password2.id_for_label }}">{{ password_form.new_password2.label }}</label>
+          <div class="password-field-wrap">
+            {{ password_form.new_password2 }}
+            <button class="password-toggle" type="button" aria-label="Show password" data-target="{{ password_form.new_password2.id_for_label }}">👁</button>
+          </div>
+          {% if password_form.new_password2.help_text %}
+            <div class="password-hint">{{ password_form.new_password2.help_text }}</div>
+          {% endif %}
+          {% for error in password_form.new_password2.errors %}
+            <span class="field-error">{{ error }}</span>
+          {% endfor %}
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <button class="button button-dark" type="submit">Update Password <span>→</span></button>
+          <div class="password-strength" data-strength-for="{{ password_form.new_password1.id_for_label }}" aria-live="polite">
+            <div class="strength-track">
+              <span></span><span></span><span></span><span></span>
+            </div><span class="strength-label">8-16 characters <strong>Not entered</strong></span>
+          </div>
+        </div>
       </form>
     </section>
   </div>

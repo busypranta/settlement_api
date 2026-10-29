@@ -314,7 +314,7 @@ td { padding: 16px 18px; font-size: 13px; }
 .password-field-wrap input { width: 100%; padding-right: 42px !important; }
 .password-toggle { position: absolute; top: 50%; right: 11px; transform: translateY(-50%); border: 0; background: transparent; color: #62707d; font-size: 15px; cursor: pointer; padding: 4px; border-radius: 6px; }
 .password-toggle:hover, .password-toggle:focus-visible { background: #edf5f1; color: #0f6d5f; }
-.strength-track { display: flex; flex: 1; gap: 5px; max-width: 180px; }
+.strength-track { display: flex; flex: 1; gap: 5px; max-width: 180px; min-width: 160px; }
 .strength-track span { height: 6px; flex: 1; border-radius: 99px; background: #e7ece9; transition: background .18s ease; }
 .strength-label { color: #768279; font-size: 12px; }
 .strength-label strong { color: #526057; font-weight: 700; }

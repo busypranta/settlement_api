@@ -188,7 +188,7 @@ class ProfileForm(forms.ModelForm):
 class PortalPasswordChangeForm(PasswordChangeForm):
     old_password = forms.CharField(
         label='Current password',
-        widget=forms.PasswordInput(attrs={'autocomplete': 'current-password', 'data-password-toggle': 'true'}),
+        widget=forms.PasswordInput(attrs={'autocomplete': 'current-password', 'data-password-toggle': 'true', 'placeholder': 'Enter current password'}),
     )
     new_password1 = forms.CharField(
         label='New password',
@@ -199,13 +199,18 @@ class PortalPasswordChangeForm(PasswordChangeForm):
             'minlength': '8',
             'maxlength': '16',
             'data-password-toggle': 'true',
+            'placeholder': 'Enter new password',
         }),
-        help_text='Use 8–16 characters. Avoid reused passwords and personal details.',
+        help_text='Use 8-16 chars. Avoid reused passwords and personal details.',
         strip=False,
     )
     new_password2 = forms.CharField(
         label='Confirm new password',
         max_length=16,
-        widget=forms.PasswordInput(attrs={'autocomplete': 'new-password', 'minlength': '8', 'maxlength': '16', 'data-password-toggle': 'true'}),
+        widget=forms.PasswordInput(attrs={
+            'autocomplete': 'new-password', 'minlength': '8', 'maxlength': '16',
+            'data-password-toggle': 'true',
+            'placeholder': 'Confirm new password',
+            }),
         strip=False,
     )

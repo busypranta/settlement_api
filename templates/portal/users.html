@@ -4,7 +4,6 @@
 {% block content %}
 <div class="page-heading heading-with-action">
   <div>
-    <div class="eyebrow light-eyebrow"><span class="eyebrow-dot"></span> ACCESS ADMINISTRATION</div>
     <h1>{% if is_superadmin %}Global account management{% else %}Managed accounts{% endif %}</h1>
     <p class="muted">{% if is_superadmin %}Manage portal users and admin access across the organization.{% else %}Create and manage users in your scope only.{% endif %}</p>
   </div>
