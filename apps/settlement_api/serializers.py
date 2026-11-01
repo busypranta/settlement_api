@@ -1,5 +1,7 @@
+import os
 from rest_framework import serializers
 
+DAYS_ALLOWED_FOR_REPORT = int(os.getenv('DAYS_ALLOWED_FOR_REPORT', '90'))
 
 class DateRangeSerializer(serializers.Serializer):
     from_date = serializers.DateField(input_formats=['%d-%m-%Y'])
@@ -14,8 +16,8 @@ class DateRangeSerializer(serializers.Serializer):
 class SettlementReportDateRangeSerializer(DateRangeSerializer):
     def validate(self, attrs):
         attrs = super().validate(attrs)
-        if (attrs['to_date'] - attrs['from_date']).days + 1 > 60:
-            raise serializers.ValidationError({'to_date': 'The date range cannot exceed 60 calendar days.'})
+        if (attrs['to_date'] - attrs['from_date']).days + 1 > DAYS_ALLOWED_FOR_REPORT:
+            raise serializers.ValidationError({'to_date': f'The date range cannot exceed {DAYS_ALLOWED_FOR_REPORT} calendar days.'})
         return attrs
 
 
