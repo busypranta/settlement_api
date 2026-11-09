@@ -1,0 +1,6 @@
+# Docker build files must keep LF endings, even on Windows checkouts.
+Dockerfile          text eol=lf
+docker/*.py         text eol=lf
+docker-compose*.yml text eol=lf
+*.sh                text eol=lf
+commands.txt        text eol=lf

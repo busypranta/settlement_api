@@ -33,13 +33,23 @@ The browser portal uses Django's session authentication and CSRF protection. API
 
 Set `DEBUG=False` and secure cookie settings in production. Terminate HTTPS at the approved deployment boundary; production settings redirect HTTP to HTTPS and enable HSTS. Schedule `python manage.py flushexpiredtokens` regularly to remove expired JWT blacklist records. Never commit `.env` or use production credentials locally.
 
+### Shared database / table prefix
+
+If this portal shares an Oracle schema with another application, set `DB_TABLE_PREFIX` (for example `jp_`) before the first `migrate`. The prefix is applied to every managed table, including Django's `auth_*`, `django_*`, session, admin, and `token_blacklist_*` tables, so the two applications cannot collide. Choose the prefix before the first migration and keep it stable for that database; changing it later makes Django look for a different set of tables.
+
 ## Docker
 
-The portal has its own compose project; Oracle is external:
+The portal has its own compose project; Oracle is external. The image is built in two stages, runs as a non-root user on a read-only root filesystem, and the compose build uses host networking so corporate build hosts can reach their package mirror or proxy:
 
 ```text
-docker compose -f docker-compose.portal.yml up --build
+docker compose up -d --build
+docker compose run --rm --no-deps web python manage.py migrate --database default
+docker compose run --rm -it --no-deps web python manage.py createsuperadmin --username <name>
 ```
+
+For server deployments, `sudo ./deploy.sh` performs a `sudo git pull`, rebuilds the image, restarts the containers, and optionally runs migrations. Running `./deploy.sh` without sudo works too; the script adds the sudo prefix automatically when needed.
+
+The runtime service joins the `settlement_api` bridge network and publishes port 8001 on `127.0.0.1` by default. Set `BIND_ADDRESS` only when a proxy on another interface must reach it. Copy `.env.example` to `.env` first and provide a `SECRET_KEY` of at least 32 random characters; the entrypoint rejects `DEBUG=1`, placeholder keys, and short keys. See [commands.txt](./commands.txt) for build, deploy, migration, health-check, and troubleshooting commands. `docker-compose.portal.yml` remains as a compatibility entry point and includes the main compose file.
 
 The web container health check validates the configured Oracle connection. Apply migrations against the portal schema only, then bootstrap the first SUPERADMIN through the management command. See [SCHEMA_GUIDE.md](./SCHEMA_GUIDE.md) for least-privilege Oracle setup.
 

@@ -1,11 +1,87 @@
+name: settlement_api
+
 services:
   web:
-    build: .
-    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000
-    ports:
-      - "8001:8000"
-    env_file:
-      - .env
-    volumes:
-      - .:/app
+    build:
+      context: .
+      dockerfile: Dockerfile
+      network: host
+      args:
+        PYTHON_VERSION: "${PYTHON_VERSION:-3.12}"
+    image: "settlement-api:${IMAGE_TAG:-latest}"
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    networks:
+      - settlement_api
+
+    # Hardening: non-root user, read-only root filesystem, no capabilities.
+    user: "10001:10001"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - "no-new-privileges:true"
+    tmpfs:
+      - "/tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777"
+
+    # Bind to loopback by default. If a TLS proxy runs in another container,
+    # attach it to the settlement_api network instead of publishing the port.
+    # If the port must be published, set BIND_ADDRESS to the proxy-facing
+    # interface and firewall the port (Docker bypasses normal firewall rules
+    # on some hosts).
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${HOST_PORT:-8001}:8000"
+
+    environment:
+      # Required secrets: the entrypoint refuses placeholders and short keys.
+      SECRET_KEY: "${SECRET_KEY:?Set SECRET_KEY in .env or the environment}"
+      DEBUG: "0"
+      ALLOWED_HOSTS: "${ALLOWED_HOSTS:?Set ALLOWED_HOSTS in .env or the environment}"
+      CSRF_TRUSTED_ORIGINS: "${CSRF_TRUSTED_ORIGINS:-}"
+
+      # Portal Oracle schema (the source schema is read through the same
+      # connection in this project).
+      PORTAL_ORACLE_DSN: "${PORTAL_ORACLE_DSN:?Set PORTAL_ORACLE_DSN in .env or the environment}"
+      PORTAL_ORACLE_USER: "${PORTAL_ORACLE_USER:?Set PORTAL_ORACLE_USER in .env or the environment}"
+      PORTAL_ORACLE_PASSWORD: "${PORTAL_ORACLE_PASSWORD:?Set PORTAL_ORACLE_PASSWORD in .env or the environment}"
+
+      # Choose the table prefix before the first migration and keep it stable.
+      DB_TABLE_PREFIX: "${DB_TABLE_PREFIX:-}"
+      DAYS_ALLOWED_FOR_REPORT: "${DAYS_ALLOWED_FOR_REPORT:-90}"
+
+      # Gunicorn and Django runtime settings.
+      PORT: "8000"
+      # Trust X-Forwarded-* only when the published port is restricted to the
+      # TLS proxy. Use an explicit IP/hostname list when possible.
+      FORWARDED_ALLOW_IPS: "${FORWARDED_ALLOW_IPS:-*}"
+
+    # Optional: use Docker secrets instead of plain environment values.
+    # The entrypoint also accepts SECRET_KEY_FILE, PORTAL_ORACLE_DSN_FILE,
+    # PORTAL_ORACLE_USER_FILE, and PORTAL_ORACLE_PASSWORD_FILE.
+    # secrets:
+    #   - secret_key
+    #   - portal_oracle_password
+
+    healthcheck:
+      test: ["CMD", "python", "/usr/local/bin/healthcheck.py"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+    # Bounds the blast radius of a runaway process.
+    pids_limit: 256
+    mem_limit: 768m
+    cpus: 1.0
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+networks:
+  settlement_api:
+    name: settlement_api
+    driver: bridge

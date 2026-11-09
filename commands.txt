@@ -1,0 +1,224 @@
+====================================================================
+Settlement Portal - Docker build, deploy, and maintenance commands
+====================================================================
+
+Prerequisites
+-------------
+- Docker Engine with Compose v2 (`docker compose`).
+- Oracle database reachable from the container.
+- This server requires root for every Docker and git command, so the
+  commands below are shown with `sudo`.
+- Copy `.env.example` to `.env` and set every required value:
+
+    SECRET_KEY              >= 32 random characters
+    ALLOWED_HOSTS           public hostname(s), comma separated
+    PORTAL_ORACLE_DSN       host:port/service_name
+    PORTAL_ORACLE_USER      portal schema user
+    PORTAL_ORACLE_PASSWORD  portal schema password
+    DB_TABLE_PREFIX         table prefix chosen before the first migration
+    CSRF_TRUSTED_ORIGINS    optional, e.g. https://sandbox-pg.janatapay.com
+
+Generate a strong SECRET_KEY (run outside Docker):
+
+    python -c "import secrets; print(secrets.token_urlsafe(64))"
+
+Commands below use POSIX sh/bash syntax. On PowerShell, use backticks for
+line continuation and `$env:NAME="value"` to set variables.
+
+IMPORTANT
+---------
+- The build uses host networking because corporate build hosts usually need
+  it to reach the package mirror/proxy. Runtime traffic uses the
+  `settlement_api` bridge network, not host networking.
+- The container runs as UID/GID 10001 with a read-only root filesystem and
+  no Linux capabilities. Do not mount the source tree over /app.
+- The entrypoint refuses DEBUG=1, placeholder SECRET_KEY values, and keys
+  shorter than 32 characters.
+- No data volume is required: portal state lives in Oracle and logs go to
+  the container's stdout/stderr (rotated by the json-file driver).
+
+Deploy with the script
+----------------------
+`deploy.sh` performs the normal server deployment:
+
+1. `sudo git pull` (fast-forward only)
+2. `sudo docker compose build`
+3. `sudo docker compose up -d`
+4. asks whether to run database migrations, then runs them if you answer yes
+
+Run it as root (recommended on this server):
+
+    sudo chmod +x deploy.sh
+    sudo ./deploy.sh
+
+Running it without sudo also works; the script detects that it is not root
+and adds `sudo` to each command automatically. Commands are never
+double-prefixed.
+
+The Git username is `pranta` by default. Git still prompts for the password
+interactively (or uses your configured credential helper); the password is
+never stored in the script. Override the username when needed:
+
+    sudo env GIT_USERNAME=another-user ./deploy.sh
+
+Non-interactive variants:
+
+    # Always run migrations after starting
+    sudo ./deploy.sh --migrate
+
+    # Never run migrations
+    sudo ./deploy.sh --no-migrate
+
+    # Show help
+    sudo ./deploy.sh --help
+
+Notes:
+- The script prompts for the sudo password first (or uses the cached sudo
+  timestamp), then Git prompts for the HTTPS password if no credential helper
+  is configured. Password input is not echoed.
+- To avoid typing the Git password every time, configure a credential helper
+  for the root user (because the pull uses sudo) or switch the remote to SSH.
+  Do not put the password in deploy.sh.
+- The script uses `git pull --ff-only`. If the server has local commits that
+  cannot be fast-forwarded, the script stops before building; resolve the
+  divergence first.
+- `sudo docker compose build` still uses the host-network build setting.
+
+Build
+-----
+# Normal build (uses build.network: host from docker-compose.yml)
+sudo docker compose build
+
+# Clean rebuild after changing requirements.txt or the Dockerfile
+sudo docker compose build --no-cache
+
+# Pull the newest base image before rebuilding
+sudo docker compose build --pull
+
+# Same build without Compose
+sudo docker build --network=host -t settlement-api:latest .
+
+# Build a versioned image
+sudo env IMAGE_TAG=1.0.0 docker compose build
+
+Validate configuration
+----------------------
+sudo docker compose config
+
+Deploy / start
+--------------
+sudo docker compose up -d
+sudo docker compose ps
+sudo docker compose logs -f web
+
+# Rebuild and recreate after code changes
+sudo docker compose up -d --build
+
+# Stop and remove the container (the Oracle schema is untouched)
+sudo docker compose down
+
+Database migrations
+-------------------
+# Apply portal-schema migrations. Run this after the first deploy and after
+# every image that contains new migrations.
+sudo docker compose run --rm --no-deps web python manage.py migrate --database default
+
+# Inspect migration state
+sudo docker compose run --rm --no-deps web python manage.py showmigrations --database default
+
+# Dry run / plan
+sudo docker compose run --rm --no-deps web python manage.py migrate --database default --plan
+
+Create the first SUPERADMIN
+---------------------------
+# Interactive: prompts for the password twice.
+sudo docker compose run --rm -it --no-deps web \
+  python manage.py createsuperadmin --username janatapay_admin
+
+# Non-interactive: read the password from stdin (keeps it out of shell
+# history). Store the password file outside the build context.
+sudo docker compose run --rm -T --no-deps web \
+  python manage.py createsuperadmin --username janatapay_admin --password-stdin \
+  < .secrets/admin-password.txt
+
+# Later, reset a password from the portal UI or Django shell.
+sudo docker compose exec -it web python manage.py shell
+
+Health and verification
+-----------------------
+sudo docker compose ps
+sudo docker inspect --format '{{.State.Health.Status}}' "$(sudo docker compose ps -q web)"
+
+# The published port binds to 127.0.0.1 by default. Send the proxy headers
+# that Django expects when DEBUG=0 (adjust Host to match ALLOWED_HOSTS):
+curl -fsS \
+  -H 'X-Forwarded-Proto: https' \
+  -H 'Host: sandbox-pg.janatapay.com' \
+  http://127.0.0.1:8001/health/
+
+# Or test through the TLS proxy:
+curl -fsS https://sandbox-pg.janatapay.com/health/
+
+Django checks
+-------------
+sudo docker compose exec web python manage.py check
+sudo docker compose exec web python manage.py check --deploy
+
+Maintenance
+-----------
+# Remove expired/blacklisted JWT records (schedule this, e.g. daily cron)
+sudo docker compose exec web python manage.py flushexpiredtokens
+
+# Static assets are built into the read-only image by collectstatic during
+# `sudo docker compose build`. To change them, rebuild the image:
+sudo docker compose build --no-cache
+
+# Resource usage / processes
+sudo docker compose top
+sudo docker stats --no-stream
+
+Update / redeploy
+-----------------
+sudo docker compose build --pull
+sudo docker compose up -d
+sudo docker compose ps
+sudo docker image prune -f
+
+Logs and troubleshooting
+------------------------
+sudo docker compose logs --tail=200 web
+sudo docker compose logs -f --since=10m web
+
+# Confirm the process runs as the non-root user
+sudo docker compose exec web id
+sudo docker compose exec web python -c "import django; print(django.get_version())"
+
+# Inspect the runtime environment without printing secrets
+sudo docker compose exec web env | grep -E '^(DEBUG|ALLOWED_HOSTS|DB_TABLE_PREFIX)='
+
+# If the container exits with code 78, the entrypoint rejected configuration.
+# Check for a missing variable, DEBUG=1, or a placeholder/short SECRET_KEY.
+sudo docker compose logs web
+
+Optional Docker secrets
+-----------------------
+Instead of putting SECRET_KEY or the Oracle password in `.env`, use files:
+
+1. Create the files, for example:
+     .secrets/secret-key.txt
+     .secrets/portal-oracle-password.txt
+2. Uncomment the `secrets:` blocks in docker-compose.yml.
+3. In the service environment, replace:
+
+     SECRET_KEY: "${SECRET_KEY:?...}"
+     PORTAL_ORACLE_PASSWORD: "${PORTAL_ORACLE_PASSWORD:?...}"
+
+   with the file-backed variables:
+
+     SECRET_KEY_FILE: /run/secrets/secret_key
+     PORTAL_ORACLE_PASSWORD_FILE: /run/secrets/portal_oracle_password
+
+4. Start with `sudo docker compose up -d`.
+
+The entrypoint reads `*_FILE` variables and exports the value for Django.
+Never put `.secrets/` under version control or inside the build context.
