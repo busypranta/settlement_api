@@ -85,3 +85,6 @@ networks:
   settlement_api:
     name: settlement_api
     driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.10.0/24
