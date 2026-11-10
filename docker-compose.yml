@@ -36,7 +36,7 @@ services:
     environment:
       # Required secrets: the entrypoint refuses placeholders and short keys.
       SECRET_KEY: "${SECRET_KEY:?Set SECRET_KEY in .env or the environment}"
-      DEBUG: "0"
+      DEBUG: "${DEBUG:-0}"
       ALLOWED_HOSTS: "${ALLOWED_HOSTS:?Set ALLOWED_HOSTS in .env or the environment}"
       CSRF_TRUSTED_ORIGINS: "${CSRF_TRUSTED_ORIGINS:-}"
 
