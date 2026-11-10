@@ -1,7 +1,7 @@
 from django.db import models
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
-
+from django.conf import settings
 
 class SettlementBatch(models.Model):
     STATUS_CHOICES = [
@@ -17,7 +17,7 @@ class SettlementBatch(models.Model):
 
     class Meta:
         app_label = 'source'
-        db_table = '"JPAY_RECON"."SETTLEMENT_BATCH"'
+        db_table = f'"{settings.SOURCE_SCHEMA}"."SETTLEMENT_BATCH"'
         managed = False
 
     def __str__(self):
@@ -35,7 +35,7 @@ class BankAccount(models.Model):
 
     class Meta:
         app_label = 'source'
-        db_table = '"JPAY_RECON"."BANK_ACCOUNTS"'
+        db_table = f'"{settings.SOURCE_SCHEMA}"."BANK_ACCOUNTS"'
         managed = False
 
 
@@ -45,7 +45,7 @@ class AccountOwner(models.Model):
 
     class Meta:
         app_label = 'source'
-        db_table = '"JPAY_RECON"."ACCOUNT_OWNERS"'
+        db_table = f'"{settings.SOURCE_SCHEMA}"."ACCOUNT_OWNERS"'
         managed = False
 
 
@@ -55,7 +55,7 @@ class Vendor(models.Model):
 
     class Meta:
         app_label = 'source'
-        db_table = '"JPAY_RECON"."vendors"'
+        db_table = f'"{settings.SOURCE_SCHEMA}"."vendors"'
         managed = False
 
 
@@ -65,7 +65,7 @@ class Processor(models.Model):
 
     class Meta:
         app_label = 'source'
-        db_table = '"JPAY_RECON"."processors"'
+        db_table = f'"{settings.SOURCE_SCHEMA}"."processors"'
         managed = False
 
 
@@ -81,7 +81,7 @@ class Merchant(models.Model):
 
     class Meta:
         app_label = 'source'
-        db_table = '"JPAY_RECON"."merchants"'
+        db_table = f'"{settings.SOURCE_SCHEMA}"."merchants"'
         managed = False
 
 
@@ -97,7 +97,7 @@ class SettlementLine(models.Model):
 
     class Meta:
         app_label = 'source'
-        db_table = '"JPAY_RECON"."SETTLEMENT_LINE"'
+        db_table = f'"{settings.SOURCE_SCHEMA}"."SETTLEMENT_LINE"'
         managed = False
 
 
@@ -113,7 +113,7 @@ class OwnTransaction(models.Model):
 
     class Meta:
         app_label = 'source'
-        db_table = '"JPAY_RECON"."INGESTION_OWN_TRANSACTION"'
+        db_table = f'"{settings.SOURCE_SCHEMA}"."INGESTION_OWN_TRANSACTION"'
         managed = False
 
 class SourceContentType(models.Model):
@@ -123,5 +123,5 @@ class SourceContentType(models.Model):
 
     class Meta:
         managed = False
-        db_table = '"JPAY_RECON"."DJANGO_CONTENT_TYPE"'
+        db_table = f'"{settings.SOURCE_SCHEMA}"."DJANGO_CONTENT_TYPE"'
     
