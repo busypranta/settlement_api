@@ -59,6 +59,7 @@ services:
       # Trust X-Forwarded-* only when the published port is restricted to the
       # TLS proxy. Use an explicit IP/hostname list when possible.
       FORWARDED_ALLOW_IPS: "${FORWARDED_ALLOW_IPS:-*}"
+      SOURCE_SCHEMA: "${SOURCE_SCHEMA:?Set SOURCE_SCHEMA in .env or the environment}"
 
     # Optional: use Docker secrets instead of plain environment values.
     # The entrypoint also accepts SECRET_KEY_FILE, PORTAL_ORACLE_DSN_FILE,
