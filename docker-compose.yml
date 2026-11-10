@@ -42,6 +42,7 @@ services:
       DEBUG: "${DEBUG:-0}"
       ALLOWED_HOSTS: "${ALLOWED_HOSTS:?Set ALLOWED_HOSTS in .env or the environment}"
       CSRF_TRUSTED_ORIGINS: "${CSRF_TRUSTED_ORIGINS:-}"
+      MAINTENANCE_MODE: "${MAINTENANCE_MODE:-0}"
 
       # Portal Oracle schema (the source schema is read through the same
       # connection in this project).
