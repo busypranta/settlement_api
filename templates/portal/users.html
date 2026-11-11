@@ -4,8 +4,7 @@
 {% block content %}
 <div class="page-heading heading-with-action">
   <div>
-    <h1>{% if is_superadmin %}Global account management{% else %}Managed accounts{% endif %}</h1>
-    <p class="muted">{% if is_superadmin %}Manage portal users and admin access across the organization.{% else %}Create and manage users in your scope only.{% endif %}</p>
+    <h1>{% if is_superadmin %}Account management{% else %}Managed accounts{% endif %}</h1>
   </div>
   <a class="button button-primary" href="{% url 'portal-create-account' %}">Create an account <span>→</span></a>
 </div>
@@ -13,32 +12,36 @@
 <div class="admin-tools-grid {% if not is_superadmin %}single-admin-tool{% endif %}">
   {% if is_superadmin %}
   <section class="panel admin-form-panel">
-    <div class="panel-heading"><div><span class="section-kicker">SCOPE CONTROL</span><h2>Assign users to an admin</h2><p>Select an administrator and a user to grant management visibility. Assignments are listed below and can be removed there.</p></div><span class="stat-icon icon-teal">⇄</span></div>
+    <div class="panel-heading"><div><h2>Assign users to an admin</h2></div><span class="stat-icon icon-teal">⇄</span></div>
     <form method="post" class="admin-form">
       {% csrf_token %}<input type="hidden" name="action" value="assign_admin_user">
       {% for field in admin_assignment_form %}
-      <div class="form-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.name == 'admin' %}<div class="field-help">The selected admin can manage this account and its assigned merchants.</div>{% endif %}{% for error in field.errors %}<span class="field-error">{{ error }}</span>{% endfor %}</div>
+      <div class="form-field">
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% for error in field.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+      </div>
       {% endfor %}
-      <button class="button button-dark" type="submit">Save admin scope <span>→</span></button>
+      <button class="button button-dark" type="submit">Save <span>→</span></button>
     </form>
   </section>
   {% endif %}
   <section class="panel admin-form-panel">
-    <div class="panel-heading"><div><span class="section-kicker">MERCHANT ACCESS</span><h2>Grant merchant access</h2><p>Assign an active merchant to a user in your management scope.</p></div><span class="stat-icon icon-teal">◈</span></div>
+    <div class="panel-heading"><div><h2>Grant merchant access</h2></div><span class="stat-icon icon-teal">◈</span></div>
     <form method="post" class="admin-form">
       {% csrf_token %}<input type="hidden" name="action" value="assign_merchant">
       {{ merchant_assignment_form.non_field_errors }}
       {% for field in merchant_assignment_form %}
       <div class="form-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<span class="field-error">{{ error }}</span>{% endfor %}</div>
       {% endfor %}
-      <button class="button button-dark" type="submit">Grant merchant access <span>→</span></button>
+      <button class="button button-dark" type="submit">Grant Access <span>→</span></button>
     </form>
   </section>
 </div>
 
 {% if is_superadmin %}
 <section class="panel assignment-admin-panel">
-  <div class="panel-heading"><div><span class="section-kicker">ADMIN SCOPE DIRECTORY</span><h2>Assigned account access</h2><p>Review which users each administrator can manage. Users created by an admin are also included automatically.</p></div><div class="admin-scope-controls"><label class="search-box"><span>⌕</span><input data-admin-scope-search type="search" placeholder="Search admins and users"></label><span class="scope-count">{{ admin_assignments|length }} assignment{{ admin_assignments|length|pluralize }}</span></div></div>
+  <div class="panel-heading"><div><h2>Assigned account access</h2></div><div class="admin-scope-controls"><label class="search-box"><span>⌕</span><input data-admin-scope-search type="search" placeholder="Search admins and users"></label><span class="scope-count">{{ admin_assignments|length }} assignment{{ admin_assignments|length|pluralize }}</span></div></div>
   {% if admin_assignments %}
   <div class="assignment-directory">
     {% for assignment in admin_assignments %}
@@ -62,7 +65,7 @@
 
 <section class="panel full-panel managed-panel" id="account-directory">
   <div class="panel-heading">
-    <div><span class="section-kicker">{% if is_superadmin %}ORGANIZATION{% else %}YOUR SCOPE{% endif %}</span><h2>{% if is_superadmin %}All portal accounts{% else %}Users in your scope{% endif %}</h2><p>{{ page_obj.paginator.count }} account{{ page_obj.paginator.count|pluralize }}{% if not is_superadmin %} created by you or explicitly assigned to you{% endif %}</p></div>
+    <div><h2>{% if is_superadmin %}All portal accounts{% else %}Users in your scope{% endif %}</h2><p>{{ page_obj.paginator.count }} account{{ page_obj.paginator.count|pluralize }}{% if not is_superadmin %} created by you or explicitly assigned to you{% endif %}</p></div>
     <form method="get" class="account-directory-controls">
       <label class="search-box"><span>⌕</span><input name="q" type="search" placeholder="Search name, username, email or mobile" value="{{ query }}"></label>
       {% if is_superadmin %}<label class="visually-hidden" for="account-role-filter">Filter by role</label><select id="account-role-filter" class="account-role-filter" name="role"><option value="">All roles</option><option value="ADMIN" {% if role_filter == 'ADMIN' %}selected{% endif %}>Admins</option><option value="USER" {% if role_filter == 'USER' %}selected{% endif %}>Users</option><option value="SUPERADMIN" {% if role_filter == 'SUPERADMIN' %}selected{% endif %}>Super admins</option></select>{% endif %}
@@ -71,7 +74,21 @@
     </form>
   </div>
   {% if users %}
-  <div class="table-wrap"><table><thead><tr><th>User</th><th>Role</th><th>Merchant assignments</th><th>Multiple-merchant API</th><th>Transactions API</th><th>Status</th><th>Joined</th><th>Manage</th></tr></thead><tbody>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>User</th>
+          <th>Role</th>
+          <th>Merchants</th>
+          <th>Multiple-merchant</th>
+          <th>Transactions API</th>
+          <th>Status</th>
+          <th>Joined</th>
+          <th>Manage</th>
+        </tr>
+      </thead>
+      <tbody>
   {% for account in users %}
     <tr>
       <td><div class="table-user"><span class="mini-avatar">{{ account.get_full_name|slice:":1"|upper }}</span><span><strong>{{ account.get_full_name }}</strong><small>{{ account.email|default:account.username }}{% if account.mobile %} · {{ account.mobile }}{% endif %}</small></span></div></td>

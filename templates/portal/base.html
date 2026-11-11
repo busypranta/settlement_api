@@ -7,33 +7,40 @@
   <meta name="theme-color" content="#101b35">
   <title>{% block title %}Overview{% endblock %} · Settlement Portal</title>
   <link rel="stylesheet" href="{% static 'portal/portal.css' %}">
+  <link rel="icon" type="image/png" href="{% static 'favicon/favicon-96x96.png' %}" sizes="96x96" />
+  <link rel="icon" type="image/svg+xml" href="{% static 'favicon/favicon.svg' %}" />
+  <link rel="shortcut icon" href="{% static 'favicon/favicon.ico' %}" />
+  <link rel="apple-touch-icon" sizes="180x180" href="{% static 'favicon/apple-touch-icon.png' %}" />
+  <meta name="apple-mobile-web-app-title" content="JanataPay" />
+  <link rel="manifest" href="{% static 'favicon/site.webmanifest' %}" />
 </head>
 <body class="portal-shell">
   <aside class="sidebar">
     <a class="brand" href="{% url 'portal-dashboard' %}">
-      <span class="brand-mark">S</span>
-      <span><strong>Settlement Portal</strong><small>MERCHANT SETTLEMENTS</small></span>
+      {% comment %} <span class="brand-mark">S</span> {% endcomment %}
+      <img src="{% static 'images/jpay-white.webp' %}" alt="JanataPay" class="brand-logo" />
+      {% comment %} <span><strong>Settlement Portal</strong></span> {% endcomment %}
     </a>
-    <div class="workspace-label">WORKSPACE</div>
+    <div class="workspace-label">Settlement Portal</div>
     <nav class="side-nav" aria-label="Main navigation">
       <a href="{% url 'portal-dashboard' %}" class="{% if request.resolver_match.url_name == 'portal-dashboard' %}active{% endif %}"><span class="nav-icon">⌂</span>Overview</a>
-      <a href="{% url 'portal-merchant-access' %}" class="{% if request.resolver_match.url_name == 'portal-merchant-access' %}active{% endif %}"><span class="nav-icon">◈</span>Merchant access</a>
-      <a href="{% url 'portal-api-logs-page' %}" class="{% if request.resolver_match.url_name == 'portal-api-logs-page' %}active{% endif %}"><span class="nav-icon">≋</span>API activity</a>
-      <a href="{% url 'portal-api-playground' %}" class="{% if request.resolver_match.url_name == 'portal-api-playground' %}active{% endif %}"><span class="nav-icon">↳</span>API playground</a>
+      <a href="{% url 'portal-merchant-access' %}" class="{% if request.resolver_match.url_name == 'portal-merchant-access' %}active{% endif %}"><span class="nav-icon">◈</span>Merchants</a>
+      <a href="{% url 'portal-api-logs-page' %}" class="{% if request.resolver_match.url_name == 'portal-api-logs-page' %}active{% endif %}"><span class="nav-icon">≋</span>API Activity</a>
+      <a href="{% url 'portal-api-playground' %}" class="{% if request.resolver_match.url_name == 'portal-api-playground' %}active{% endif %}"><span class="nav-icon">↳</span>API Playground</a>
       {% if user.role == 'ADMIN' or user.role == 'SUPERADMIN' or user.is_superuser %}
       <div class="workspace-label nav-section-label">MANAGEMENT</div>
       <a href="{% url 'portal-managed-accounts' %}" class="{% if request.resolver_match.url_name == 'portal-managed-accounts' or request.resolver_match.url_name == 'portal-create-account' %}active{% endif %}"><span class="nav-icon">♙</span>Accounts</a>
       {% endif %}
-      <a href="{% url 'portal-profile-page' %}" class="{% if request.resolver_match.url_name == 'portal-profile-page' %}active{% endif %}"><span class="nav-icon">⚙</span>Profile & security</a>
+      <a href="{% url 'portal-profile-page' %}" class="{% if request.resolver_match.url_name == 'portal-profile-page' %}active{% endif %}"><span class="nav-icon">⚙</span>Profile & Password</a>
     </nav>
     <div class="sidebar-bottom">
-      <div class="help-card">
+      {% comment %} <div class="help-card">
         <span class="help-spark">✦</span>
         <strong>Need API help?</strong>
         <p>Explore endpoint guides and request examples.</p>
         <a href="/api/docs/">Open API docs <span>↗</span></a>
-      </div>
-      <div class="sidebar-foot">Secure settlement access<br><span>Portal v1.0</span></div>
+      </div> {% endcomment %}
+      <div class="sidebar-foot"><span>Portal v1.0</span></div>
     </div>
   </aside>
 
@@ -42,7 +49,6 @@
       <button class="menu-toggle" type="button" aria-label="Toggle navigation" onclick="document.body.classList.toggle('nav-open')">☰</button>
       <div class="crumb"><span>Workspace</span><b>/</b>{% block breadcrumb %}Overview{% endblock %}</div>
       <div class="topbar-right">
-        <span class="secure-indicator"><i></i> Secure session</span>
         <a class="avatar-link" href="{% url 'portal-profile-page' %}" aria-label="Open profile">{{ user.get_full_name|slice:":1"|upper }}</a>
         <div class="user-summary"><strong>{{ user.get_full_name|default:user.username }}</strong><span>{{ user.role }}</span></div>
         <form method="post" action="{% url 'portal-logout' %}" class="logout-form">

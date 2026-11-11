@@ -1,21 +1,21 @@
 {% extends 'portal/base.html' %}
 {% block title %}
-  Profile & security
+  Profile & Password
 {% endblock %}
 {% block breadcrumb %}
-  Profile & security
+  Profile & Password
 {% endblock %}
 {% block content %}
   <div class="page-heading">
     <div>
-      <h1>Profile & security</h1><p class="muted">Manage your account details and keep your sign-in secure.</p>
+      <h1>Profile</h1>
     </div>
   </div>
   <div class="profile-grid">
     <section class="panel profile-panel">
       <div class="panel-heading">
         <div>
-          <h2>Personal details</h2><p>Update the information shown in your portal.</p>
+          <h2>Personal details</h2>
         </div>
       </div>
       <form method="post" class="settings-form">
@@ -25,7 +25,7 @@
         {% for field in profile_form %}
           <div class="form-field">
             <label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.name == 'mobile' %}
-              <div class="field-help">Bangladesh mobile: 01XXXXXXXXX or +8801XXXXXXXXX.</div>
+              <div class="field-help">BD Mobile: 01XXXXXXXXX or +8801XXXXXXXXX.</div>
             {% endif %}
             {% for error in field.errors %}
               <span class="field-error">{{ error }}</span>
@@ -38,7 +38,7 @@
     <section class="panel profile-panel">
       <div class="panel-heading">
         <div>
-          <h2>Change password</h2><p>Choose a strong password you don't use elsewhere.</p>
+          <h2>Change password</h2>
         </div>
       </div>
       <form method="post" class="settings-form">
@@ -89,8 +89,8 @@
             <span class="field-error">{{ error }}</span>
           {% endfor %}
         </div>
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <button class="button button-dark" type="submit">Update Password <span>→</span></button>
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem;">
+          <button class="button button-dark" type="submit">Update<span>→</span></button>
           <div class="password-strength" data-strength-for="{{ password_form.new_password1.id_for_label }}" aria-live="polite">
             <div class="strength-track">
               <span></span><span></span><span></span><span></span>

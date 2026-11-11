@@ -1,0 +1,21 @@
+{
+  "name": "JanataPay Settlement Portal",
+  "short_name": "JPay",
+  "icons": [
+    {
+      "src": "/favicon/web-app-manifest-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/favicon/web-app-manifest-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "theme_color": "#13977f",
+  "background_color": "#e8f1ed",
+  "display": "standalone"
+}

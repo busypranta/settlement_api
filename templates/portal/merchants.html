@@ -1,27 +1,20 @@
 {% extends 'portal/base.html' %}
 {% block title %}
-  Merchant access
+  Merchant Access
 {% endblock %}
 {% block breadcrumb %}
-  Merchant access
+  Merchants
 {% endblock %}
 {% block content %}
   <div class="page-heading">
     <div>
       <h1>
         {% if is_admin %}
-          Merchant management
+          Merchant Management
         {% else %}
-          Merchant access
+          Merchants
         {% endif %}
       </h1>
-      <p class="muted">
-        {% if is_admin %}
-          Register merchants and grant access to users in your management scope.
-        {% else %}
-          Merchants available to your account and their status.
-        {% endif %}
-      </p>
     </div>
   </div>
 
