@@ -101,7 +101,7 @@ USER app:app
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+HEALTHCHECK --interval=60s --timeout=5s --start-period=30s --retries=3 \
     CMD ["python", "/usr/local/bin/healthcheck.py"]
 
 ENTRYPOINT ["python", "/usr/local/bin/entrypoint.py"]

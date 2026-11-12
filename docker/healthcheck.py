@@ -54,6 +54,12 @@ def main():
                 return 0
         except urllib.error.HTTPError as exc:
             print(f"healthcheck: {host} returned HTTP {exc.code}", file=sys.stderr)
+            # 400 means Django rejected the Host header. Try the next
+            # configured host. Any other status (429/500/503) is a real
+            # verdict from the app, so probing more Host values only creates
+            # duplicate requests and hides the actual failure.
+            if exc.code != 400:
+                return 1
         except (urllib.error.URLError, OSError, ValueError) as exc:
             print(f"healthcheck: {host}: {exc}", file=sys.stderr)
     return 1

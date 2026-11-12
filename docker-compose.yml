@@ -70,9 +70,9 @@ services:
 
     healthcheck:
       test: ["CMD", "python", "/usr/local/bin/healthcheck.py"]
-      interval: 30s
+      interval: 60s
       timeout: 5s
-      start_period: 20s
+      start_period: 30s
       retries: 3
 
     # Bounds the blast radius of a runaway process.

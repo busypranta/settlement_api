@@ -24,6 +24,10 @@ DOC_PERMISSIONS = (IsAuthenticated,)
 class HealthView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
+    # Health probes are infrastructure traffic, not anonymous API usage.
+    # Without this the global anon throttle (30/hour) rejects the probe and
+    # Docker marks the container unhealthy.
+    throttle_classes = []
 
     def get(self, request):
         try:
