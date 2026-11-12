@@ -152,7 +152,7 @@ SPECTACULAR_SETTINGS = {
 MAINTENANCE_MODE = env.bool('MAINTENANCE_MODE', default=False)
 SOURCE_SCHEMA = env('SOURCE_SCHEMA', default='JPAY_RECON')
 CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=[])
-SECURE_PROXY_SSL_HEADER = env('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 # TLS may be terminated by an upstream proxy/WAF that forwards plain HTTP to
 # this container. If that proxy does not send X-Forwarded-Proto: https, the
 # redirect below would loop. Set SECURE_SSL_REDIRECT=False in that case and
@@ -172,3 +172,9 @@ X_FRAME_OPTIONS = 'DENY'
 LOGIN_URL = 'portal-login'
 LOGIN_REDIRECT_URL = 'portal-dashboard'
 LOGOUT_REDIRECT_URL = 'portal-login'
+
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+
+# Expire idle sessions after 30 minutes (1800 seconds)
+# SESSION_COOKIE_AGE = 1800
+# SESSION_SAVE_EVERY_REQUEST = True 
