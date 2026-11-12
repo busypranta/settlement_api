@@ -152,7 +152,15 @@ MAINTENANCE_MODE = env.bool('MAINTENANCE_MODE', default=False)
 SOURCE_SCHEMA = env('SOURCE_SCHEMA', default='JPAY_RECON')
 CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=[])
 SECURE_PROXY_SSL_HEADER = 0 if MAINTENANCE_MODE else ('HTTP_X_FORWARDED_PROTO', 'https')
-SECURE_SSL_REDIRECT = not MAINTENANCE_MODE
+# TLS may be terminated by an upstream proxy/WAF that forwards plain HTTP to
+# this container. If that proxy does not send X-Forwarded-Proto: https, the
+# redirect below would loop. Set SECURE_SSL_REDIRECT=False in that case and
+# let the edge enforce HTTPS, instead of enabling MAINTENANCE_MODE (which also
+# turns off HSTS, secure cookies, and proxy-header handling).
+SECURE_SSL_REDIRECT = env.bool(
+    'SECURE_SSL_REDIRECT',
+    default=not MAINTENANCE_MODE,
+)
 SECURE_HSTS_SECONDS = 31_536_000 if not MAINTENANCE_MODE else 0
 SESSION_COOKIE_SECURE = not MAINTENANCE_MODE
 CSRF_COOKIE_SECURE = not MAINTENANCE_MODE

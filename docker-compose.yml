@@ -43,6 +43,9 @@ services:
       ALLOWED_HOSTS: "${ALLOWED_HOSTS:?Set ALLOWED_HOSTS in .env or the environment}"
       CSRF_TRUSTED_ORIGINS: "${CSRF_TRUSTED_ORIGINS:-}"
       MAINTENANCE_MODE: "${MAINTENANCE_MODE:-0}"
+      # Set to False only when an upstream proxy/WAF terminates TLS and
+      # forwards plain HTTP without X-Forwarded-Proto: https.
+      SECURE_SSL_REDIRECT: "${SECURE_SSL_REDIRECT:-True}"
 
       # Portal Oracle schema (the source schema is read through the same
       # connection in this project).
