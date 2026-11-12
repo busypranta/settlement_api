@@ -17,8 +17,9 @@ class UserCreateForm(forms.ModelForm):
             'minlength': '8',
             'maxlength': '16',
             'data-password-toggle': 'true',
+            'placeholder': 'Enter password',
         }),
-        help_text='Use 8–16 characters. Combine upper- and lowercase letters, numbers, and a symbol. Avoid personal details.',
+        help_text='Use 8-16 characters. Combine upper- and lowercase letters, numbers, and a symbol. Avoid personal details.',
     )
 
     class Meta:

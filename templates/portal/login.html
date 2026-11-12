@@ -7,38 +7,54 @@
   <meta name="theme-color" content="#f3f7f5">
   <title>Sign in · Settlement Portal</title>
   <link rel="stylesheet" href="{% static 'portal/portal.css' %}">
+  <link rel="icon" type="image/png" href="{% static 'favicon/favicon-96x96.png' %}" sizes="96x96" />
+  <link rel="icon" type="image/svg+xml" href="{% static 'favicon/favicon.svg' %}" />
+  <link rel="shortcut icon" href="{% static 'favicon/favicon.ico' %}" />
+  <link rel="apple-touch-icon" sizes="180x180" href="{% static 'favicon/apple-touch-icon.png' %}" />
+  <meta name="apple-mobile-web-app-title" content="JanataPay" />
+  <link rel="manifest" href="{% static 'favicon/site.webmanifest' %}" />
 </head>
 <body class="login-page">
-  <header class="login-header">
-    <a class="login-brand" href="{% url 'portal-login' %}">
-      <span class="login-brand-mark">S</span>
-      <span><strong>Settlement Portal</strong><small>MERCHANT OPERATIONS</small></span>
-    </a>
-    <div class="login-header-note"><span class="login-header-dot"></span> Secure access for your organization</div>
-  </header>
   <main class="login-main">
-    <div class="login-watermark" aria-hidden="true">S</div>
+    <div class="login-watermark" aria-hidden="true">JanataPay</div>
     <section class="login-card">
-      <div class="login-card-eyebrow"><span></span> YOUR SETTLEMENT WORKSPACE</div>
-      <h1>Welcome back.</h1>
-      <p class="login-subtitle">Sign in to review your API activity and merchant access.</p>
+      <div class="login-logo">
+        <img src="{% static 'images/jpay.webp' %}" alt="JanataPay" class="login-card-logo" />
+      </div>
       {% if form.errors %}
-        <div class="form-alert" role="alert">We couldn't sign you in. Check your username and password, then try again.</div>
+        <div class="form-alert" role="alert" style="margin-bottom: 15px;"><span aria-hidden="true">⚠</span> Please check your username and password.</div>
       {% endif %}
       <form method="post" class="login-form">
         {% csrf_token %}
         <input type="hidden" name="next" value="{{ next }}">
-        <label for="{{ form.username.id_for_label }}">Username</label>
-        {{ form.username }}
-        <label for="{{ form.password.id_for_label }}">Password</label>
-        {{ form.password }}
-        <button class="button button-primary login-submit" type="submit">Sign in to your account <span>→</span></button>
+        <div class="login-field">
+          <label for="{{ form.username.id_for_label }}">Username</label>
+          {{ form.username }}
+        </div>
+        <div class="login-field">
+          <label for="{{ form.password.id_for_label }}">Password</label>
+          <div class="password-field-wrap">
+            {{ form.password }}
+            <button class="password-toggle" type="button" data-target="{{ form.password.id_for_label }}" aria-label="Show password">👁</button>
+          </div>
+        </div>
+        <button class="button button-primary login-submit" type="submit">Log in to your account <span>→</span></button>
       </form>
       <div class="login-divider"><span></span><i>PORTAL ACCESS</i><span></span></div>
-      <p class="login-hint">Use the same account credentials as your Settlement API.</p>
     </section>
-    <div class="login-footnote"><span class="login-lock">◈</span> Your account is protected with encrypted password storage and secure sessions.</div>
   </main>
-  <footer class="login-footer"><span>© {% now "Y" %} Settlement Portal</span><span>Need access? Contact your portal administrator.</span></footer>
+  <footer class="login-footer"><span>© {% now "Y" %} Janata Bank PLC.</span><span>Need access? Contact JanataPay.</span></footer>
+  <script>
+    document.querySelectorAll('.password-toggle').forEach((toggle) => {
+      const field = document.getElementById(toggle.dataset.target);
+      if (!field) return;
+      toggle.addEventListener('click', () => {
+        const hidden = field.type === 'password';
+        field.type = hidden ? 'text' : 'password';
+        toggle.setAttribute('aria-label', hidden ? 'Hide password' : 'Show password');
+        toggle.textContent = hidden ? '🙈' : '👁';
+      });
+    });
+  </script>
 </body>
 </html>
