@@ -9,6 +9,25 @@
   <a class="button button-primary" href="{% url 'portal-create-account' %}">Create an account <span>→</span></a>
 </div>
 
+<div class="stat-grid">
+  <article class="stat-card">
+    <div class="stat-top"><span>Total accounts</span><span class="stat-icon icon-violet">♙</span></div>
+    <strong>{{ account_count }}</strong><div class="stat-caption"><span>Within your scope</span></div>
+  </article>
+  <article class="stat-card">
+    <div class="stat-top"><span>Admins</span><span class="stat-icon icon-teal">◈</span></div>
+    <strong>{{ admin_count }}</strong><div class="stat-caption"><span>Can manage accounts</span></div>
+  </article>
+  <article class="stat-card">
+    <div class="stat-top"><span>Users</span><span class="stat-icon icon-blue">≋</span></div>
+    <strong>{{ user_count }}</strong><div class="stat-caption"><span>API access accounts</span></div>
+  </article>
+  <article class="stat-card">
+    <div class="stat-top"><span>Inactive</span><span class="stat-icon icon-amber">!</span></div>
+    <strong>{{ inactive_count }}</strong><div class="stat-caption"><span>Currently disabled</span></div>
+  </article>
+</div>
+
 <div class="admin-tools-grid {% if not is_superadmin %}single-admin-tool{% endif %}">
   {% if is_superadmin %}
   <section class="panel admin-form-panel">

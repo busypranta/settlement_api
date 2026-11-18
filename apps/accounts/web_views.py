@@ -3,7 +3,7 @@ from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 
@@ -29,6 +29,29 @@ from .forms import (
 )
 from .models import User
 from .tokens import revoke_user_refresh_tokens
+
+
+class PrecountedQuerySet:
+    """Minimal wrapper that lets Paginator reuse an already-known count.
+
+    Django's Paginator issues its own COUNT(*) each time it is constructed.
+    The merchant page already calculates the filtered total in its summary
+    aggregate, so wrapping the queryset avoids a second, near-identical query.
+    """
+
+    def __init__(self, queryset, count):
+        self.queryset = queryset
+        self._count = count
+
+    def count(self):
+        return self._count
+
+    @property
+    def ordered(self):
+        return self.queryset.ordered
+
+    def __getitem__(self, key):
+        return self.queryset[key]
 
 
 def scoped_users(user):
@@ -193,16 +216,23 @@ def merchant_access(request):
     merchants = scoped_merchants(request.user).order_by('merchant_name')
     if request.user.role == User.ROLE_USER:
         merchants = merchants.filter(usermerchant__user=request.user)
-    is_admin = request.user.role in (User.ROLE_ADMIN, User.ROLE_SUPERADMIN) or request.user.is_superuser
     query = request.GET.get('q', '').strip()[:100]
-    if query:
-        merchants = merchants.filter(
-            Q(merchant_name__icontains=query) | Q(merchant_uid__icontains=query),
-        )
-    merchants = merchants.distinct()
+    query_filter = (
+        Q(merchant_name__icontains=query) | Q(merchant_uid__icontains=query)
+        if query else Q()
+    )
+    # Calculate the filtered total once and let Paginator reuse it instead of
+    # issuing a second, near-identical COUNT(*) query.
+    filtered_merchants = merchants.aggregate(
+        filtered=Count('pk', distinct=True, filter=query_filter),
+    )['filtered'] or 0
+    is_admin = request.user.role in (User.ROLE_ADMIN, User.ROLE_SUPERADMIN) or request.user.is_superuser
+    merchants = merchants.filter(query_filter).distinct()
 
     merchant_form = MerchantCreateForm()
-    edit_merchant_form = MerchantEditForm()
+    # The edit form lives in a dialog below the create form. Give its fields
+    # distinct ids so the dialog script never updates the create form instead.
+    edit_merchant_form = MerchantEditForm(auto_id='id_edit_%s')
     edit_merchant_open = False
     assignment_form = MerchantAssignmentForm(
         users=scoped_users(request.user),
@@ -269,7 +299,11 @@ def merchant_access(request):
                     'merchant_name': merchant.merchant_name,
                     'merchant_uid': merchant.merchant_uid,
                 }
-                edit_merchant_form = MerchantEditForm(request.POST, instance=merchant)
+                edit_merchant_form = MerchantEditForm(
+                    request.POST,
+                    instance=merchant,
+                    auto_id='id_edit_%s',
+                )
                 if edit_merchant_form.is_valid():
                     try:
                         with transaction.atomic():
@@ -303,7 +337,7 @@ def merchant_access(request):
         else:
             messages.error(request, 'Unknown merchant action.')
 
-    page_obj = Paginator(merchants, 25).get_page(request.GET.get('page'))
+    page_obj = Paginator(PrecountedQuerySet(merchants, filtered_merchants), 25).get_page(request.GET.get('page'))
     merchant_rows = list(page_obj.object_list)
     manageable_ids = manageable_merchant_ids(request.user, merchant_rows)
     return render(request, 'portal/merchants.html', {
@@ -348,32 +382,47 @@ def managed_accounts(request):
         messages.error(request, 'Account administration is available to admins only.')
         return redirect('portal-dashboard')
     all_users = scoped_users(request.user)
-    users = all_users
     query = request.GET.get('q', '').strip()[:100]
     role_filter = request.GET.get('role', '')
     status_filter = request.GET.get('status', '')
+    list_filter = Q()
     if query:
-        users = users.filter(
+        list_filter |= (
             Q(username__icontains=query)
             | Q(name__icontains=query)
             | Q(email__icontains=query)
             | Q(mobile__icontains=query)
         )
     if role_filter in (User.ROLE_ADMIN, User.ROLE_USER, User.ROLE_SUPERADMIN):
-        users = users.filter(role=role_filter)
+        list_filter &= Q(role=role_filter)
     if status_filter == 'active':
-        users = users.filter(is_active=True)
+        list_filter &= Q(is_active=True)
     elif status_filter == 'inactive':
-        users = users.filter(is_active=False)
-    users = users.prefetch_related('usermerchant_set__merchant').order_by('username')
-    page_obj = Paginator(users, 25).get_page(request.GET.get('page'))
+        list_filter &= Q(is_active=False)
 
+    # One aggregate supplies the summary counts and the paginator total,
+    # replacing five separate COUNT(*) queries on the same table.
+    account_totals = all_users.aggregate(
+        total=Count('pk'),
+        admin=Count('pk', filter=Q(role=User.ROLE_ADMIN)),
+        user=Count('pk', filter=Q(role=User.ROLE_USER)),
+        inactive=Count('pk', filter=Q(is_active=False)),
+        filtered=Count('pk', filter=list_filter),
+    )
+    filtered_users = account_totals['filtered'] or 0
+    users = all_users.filter(list_filter).prefetch_related('usermerchant_set__merchant').order_by('username')
+    page_obj = Paginator(PrecountedQuerySet(users, filtered_users), 25).get_page(request.GET.get('page'))
+
+    # Both assignment forms need the same role=USER options. Sharing one
+    # queryset lets Django cache the results after the first evaluation.
+    assignable_users = all_users.filter(role=User.ROLE_USER).order_by('username')
     merchant_assignment_form = MerchantAssignmentForm(
         users=all_users,
+        user_queryset=assignable_users,
         merchants=scoped_merchants(request.user),
     )
     is_superadmin = request.user.role == User.ROLE_SUPERADMIN or request.user.is_superuser
-    admin_assignment_form = AdminUserAssignmentForm() if is_superadmin else None
+    admin_assignment_form = AdminUserAssignmentForm(user_queryset=assignable_users) if is_superadmin else None
     show_merchant_tools = False
 
     if request.method == 'POST':
@@ -459,6 +508,7 @@ def managed_accounts(request):
             merchant_assignment_form = MerchantAssignmentForm(
                 request.POST,
                 users=all_users,
+                user_queryset=assignable_users,
                 merchants=scoped_merchants(request.user),
             )
             if merchant_assignment_form.is_valid():
@@ -497,7 +547,7 @@ def managed_accounts(request):
                 return redirect('portal-managed-accounts')
 
         elif action in ('assign_admin_user', 'unassign_admin_user') and is_superadmin:
-            admin_assignment_form = AdminUserAssignmentForm(request.POST)
+            admin_assignment_form = AdminUserAssignmentForm(request.POST, user_queryset=assignable_users)
             if admin_assignment_form.is_valid():
                 admin = admin_assignment_form.cleaned_data['admin']
                 account = admin_assignment_form.cleaned_data['user']
@@ -533,16 +583,22 @@ def managed_accounts(request):
         explicit_assignments = AdminUserAssignment.objects.select_related('admin', 'user').order_by(
             'admin__username', 'user__username',
         )
+    # Both assignment forms render the same role=USER options. Materialize them
+    # once so the second select reuses the same choices instead of re-querying.
+    shared_user_choices = [choice for choice in merchant_assignment_form.fields['user'].choices]
+    merchant_assignment_form.fields['user'].choices = shared_user_choices
+    if admin_assignment_form is not None:
+        admin_assignment_form.fields['user'].choices = shared_user_choices
     return render(request, 'portal/users.html', {
         'users': page_obj.object_list,
         'page_obj': page_obj,
         'query': query,
         'role_filter': role_filter,
         'status_filter': status_filter,
-        'account_count': all_users.count(),
-        'admin_count': all_users.filter(role=User.ROLE_ADMIN).count(),
-        'user_count': all_users.filter(role=User.ROLE_USER).count(),
-        'inactive_count': all_users.filter(is_active=False).count(),
+        'account_count': account_totals['total'] or 0,
+        'admin_count': account_totals['admin'] or 0,
+        'user_count': account_totals['user'] or 0,
+        'inactive_count': account_totals['inactive'] or 0,
         'merchant_assignment_form': merchant_assignment_form,
         'is_superadmin': is_superadmin,
         'admin_assignment_form': admin_assignment_form,

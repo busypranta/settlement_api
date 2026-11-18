@@ -13,6 +13,9 @@ environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 
 SECRET_KEY = env('SECRET_KEY')
 DEBUG = env('DEBUG')
+# Debug toolbar is strictly development-only: it can never be enabled when
+# DEBUG is False, even if ENABLE_DEBUG_TOOLBAR is set in the environment.
+DEBUG_TOOLBAR_ENABLED = DEBUG and env.bool('ENABLE_DEBUG_TOOLBAR', default=True)
 ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['localhost', '127.0.0.1'])
 
 INSTALLED_APPS = [
@@ -45,6 +48,15 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'core.middleware.APILogMiddleware',
 ]
+
+if DEBUG_TOOLBAR_ENABLED:
+    INSTALLED_APPS.append('debug_toolbar')
+    # Keep the toolbar middleware early so it can wrap the final response.
+    MIDDLEWARE.insert(0, 'debug_toolbar.middleware.DebugToolbarMiddleware')
+    INTERNAL_IPS = env.list(
+        'DEBUG_TOOLBAR_INTERNAL_IPS',
+        default=['127.0.0.1', '::1'],
+    )
 
 ROOT_URLCONF = 'config.urls'
 

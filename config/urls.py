@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib import admin
 from django.urls import path, include
 from django.views.generic import RedirectView
@@ -59,3 +60,10 @@ urlpatterns = [
     path('portal/', include('apps.accounts.urls_web')),
     path('', RedirectView.as_view(url='/portal/', permanent=False)),
 ]
+
+if getattr(settings, 'DEBUG_TOOLBAR_ENABLED', False):
+    import debug_toolbar
+
+    urlpatterns += [
+        path('__debug__/', include(debug_toolbar.urls)),
+    ]

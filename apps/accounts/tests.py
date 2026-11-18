@@ -4,7 +4,9 @@ from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from apps.api_logs.models import ApiLog
@@ -915,6 +917,10 @@ class PortalVisibilityTests(TestCase):
         page = self.client.get(reverse('portal-merchant-access'))
         self.assertContains(page, 'data-open-merchant-edit')
         self.assertContains(page, 'merchant-edit-dialog')
+        self.assertContains(page, 'data-lazy-merchant-options')
+        self.assertEqual(page.content.count(b'id="id_merchant_name"'), 1)
+        self.assertEqual(page.content.count(b'id="id_edit_merchant_name"'), 1)
+        self.assertEqual(page.content.count(b'id="id_edit_merchant_uid"'), 1)
 
         response = self.client.post(reverse('portal-merchant-access'), {
             'action': 'edit_merchant',
@@ -995,3 +1001,64 @@ class PortalVisibilityTests(TestCase):
         self.client.force_login(self.user)
         forbidden = self.client.get(url)
         self.assertEqual(forbidden.status_code, 403)
+
+    def test_merchant_directory_uses_one_count_query(self):
+        superadmin = User.objects.create_superuser(
+            username='merchant-count-admin',
+            email='merchant-count-admin@example.test',
+            password='MerchantCount!9284',
+        )
+        PortalMerchant.objects.create(
+            merchant_uid='count-merchant-1', merchant_name='Count Merchant 1',
+        )
+        PortalMerchant.objects.create(
+            merchant_uid='count-merchant-2', merchant_name='Count Merchant 2',
+            is_active=False,
+        )
+        self.client.force_login(superadmin)
+
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get(reverse('portal-merchant-access'))
+
+        count_queries = [
+            query['sql'] for query in queries.captured_queries
+            if 'COUNT(' in query['sql'].upper()
+        ]
+        expected_total = PortalMerchant.objects.count()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(count_queries), 1)
+        self.assertEqual(response.context['page_obj'].paginator.count, expected_total)
+
+    def test_account_directory_counts_and_user_choices_are_not_duplicated(self):
+        superadmin = User.objects.create_superuser(
+            username='account-count-admin',
+            email='account-count-admin@example.test',
+            password='AccountCount!9284',
+        )
+        for index in range(3):
+            User.objects.create_user(
+                username=f'choice-user-{index}',
+                email=f'choice-{index}@example.test',
+                password='ChoiceUser!9284',
+                role=User.ROLE_USER,
+            )
+        self.client.force_login(superadmin)
+
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get(reverse('portal-managed-accounts'))
+
+        sql = [query['sql'] for query in queries.captured_queries]
+        count_queries = [query for query in sql if 'COUNT(' in query.upper()]
+        user_option_queries = [
+            query for query in sql
+            if "'USER'" in query and 'ORDER BY' in query and 'FROM "settlement_api_portal_user"' in query
+        ]
+        expected_total = User.objects.count()
+        expected_users = User.objects.filter(role=User.ROLE_USER).count()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(count_queries), 1)
+        self.assertEqual(len(user_option_queries), 1)
+        self.assertEqual(response.context['page_obj'].paginator.count, expected_total)
+        self.assertEqual(response.context['account_count'], expected_total)
+        self.assertEqual(response.context['user_count'], expected_users)
+        self.assertContains(response, 'Total accounts')

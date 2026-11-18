@@ -109,11 +109,20 @@ class MerchantCreateForm(forms.ModelForm):
     class Meta:
         model = PortalMerchant
         fields = ('merchant_uid', 'merchant_name')
+        labels = {
+            'merchant_uid': 'Merchant UID',
+            'merchant_name': 'Merchant name',
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for field in self.fields.values():
+        placeholders = {
+            'merchant_uid': 'e.g. JPAY-001234',
+            'merchant_name': 'e.g. Acme Payments Ltd.',
+        }
+        for name, field in self.fields.items():
             field.widget.attrs.setdefault('class', 'form-control')
+            field.widget.attrs.setdefault('placeholder', placeholders.get(name, ''))
 
 
 class MerchantEditForm(forms.ModelForm):
@@ -128,8 +137,7 @@ class MerchantEditForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for field in self.fields.values():
-            field.widget.attrs.setdefault('class', 'form-control')
-        self.fields['merchant_uid'].help_text = 'Changing the UID changes the identifier used in API URLs.'
+            field.widget.attrs.setdefault('class', 'form-control')        
 
     def clean_merchant_name(self):
         name = ' '.join(self.cleaned_data['merchant_name'].split())
@@ -158,9 +166,12 @@ class MerchantAssignmentForm(forms.Form):
     user = forms.ModelChoiceField(queryset=User.objects.none(), label='Account')
     merchant = forms.ModelChoiceField(queryset=PortalMerchant.objects.none(), label='Merchant')
 
-    def __init__(self, *args, users, merchants=None, lazy_merchant=False, **kwargs):
+    def __init__(self, *args, users, merchants=None, lazy_merchant=False, user_queryset=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['user'].queryset = users.filter(role=User.ROLE_USER).order_by('username')
+        self.fields['user'].queryset = (
+            user_queryset if user_queryset is not None
+            else users.filter(role=User.ROLE_USER).order_by('username')
+        )
         merchant_queryset = merchants if merchants is not None else PortalMerchant.objects.all()
         self.fields['merchant'].queryset = merchant_queryset.filter(is_active=True).order_by('merchant_name')
         self.fields['user'].widget.attrs.update({
@@ -183,10 +194,13 @@ class AdminUserAssignmentForm(forms.Form):
     admin = forms.ModelChoiceField(queryset=User.objects.none(), label='Admin')
     user = forms.ModelChoiceField(queryset=User.objects.none(), label='User')
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, user_queryset=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['admin'].queryset = User.objects.filter(role=User.ROLE_ADMIN).order_by('username')
-        self.fields['user'].queryset = User.objects.filter(role=User.ROLE_USER).order_by('username')
+        self.fields['user'].queryset = (
+            user_queryset if user_queryset is not None
+            else User.objects.filter(role=User.ROLE_USER).order_by('username')
+        )
         for field in self.fields.values():
             field.widget.attrs['class'] = 'form-control'
             field.widget.attrs['data-searchable-select'] = 'true'
