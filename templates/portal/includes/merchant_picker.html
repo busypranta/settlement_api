@@ -1,7 +1,7 @@
 <div class="merchant-picker" data-merchant-picker data-options-url="{{ options_url }}"{% if user_select %} data-user-select="{{ user_select }}"{% endif %}{% if user_id %} data-user-id="{{ user_id }}"{% endif %}>
   <div class="merchant-picker-search-wrap">
     <span class="merchant-picker-search-icon" aria-hidden="true">⌕</span>
-    <input class="form-control merchant-picker-search" data-merchant-picker-search type="search" placeholder="Search merchants by name or UID" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="{{ picker_id }}-options">
+    <input id="{{ picker_id }}-search" class="form-control merchant-picker-search" data-merchant-picker-search type="search" placeholder="Search merchants by name or UID" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="{{ picker_id }}-options">
   </div>
   <input type="hidden" name="{{ input_name|default:'merchants' }}" value="" data-merchant-picker-input>
   <div class="merchant-picker-options" data-merchant-picker-options id="{{ picker_id }}-options" role="listbox" aria-live="polite" hidden></div>

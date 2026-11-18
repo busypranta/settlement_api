@@ -84,7 +84,7 @@
                       <i></i>{{ log.http_status }}
                     </span>
                   </td>
-                  <td class="table-secondary">{{ log.created_at|date:'M j, Y · H:i' }}</td>
+                  <td>{{ log.created_at|date:'M j, Y · H:i' }}</td>
                 </tr>
               {% endfor %}
             </tbody>
@@ -106,9 +106,10 @@
         <div class="merchant-list">
           {% for merchant in assigned_merchants %}
             <div class="merchant-row">
-              <span class="merchant-avatar">{{ merchant.merchant_name|slice:':1'|upper }}</span><div class="merchant-info">
+              <div class="merchant-info">
                 <strong>{{ merchant.merchant_name }}</strong><span>UID · {{ merchant.merchant_uid }}</span>
-              </div><span class="active-dot" title="Active"></span>
+              </div>
+              <span class="active-dot" title="Active"></span>
             </div>
           {% endfor %}
         </div>
@@ -119,64 +120,4 @@
       {% endif %}
     </section>
   </div>
-
-  {% if is_admin %}
-    <section class="panel managed-panel">
-      <div class="panel-heading">
-        <div>
-          <h2>Accounts in your scope</h2><p>Only users you created or were assigned to you</p>
-        </div><a class="text-link" href="{% url 'portal-managed-accounts' %}">Manage accounts <span>→</span></a>
-      </div>
-      {% if managed_users %}
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Account</th>
-                <th>Role</th>
-                <th>Status</th>
-                <th>Joined</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for account in managed_users %}
-                <tr>
-                  <td>
-                    <div class="table-user">
-                      <span class="mini-avatar">{{ account.get_full_name|slice:':1'|upper }}</span><span>
-                        <strong>{{ account.get_full_name }}</strong><small>
-                          {{ account.email|default:'No email provided' }}{% if account.mobile %}
-                            · {{ account.mobile }}
-                          {% endif %}
-                        </small>
-                      </span>
-                    </div>
-                  </td>
-                  <td>{{ account.role }}</td>
-                  <td>
-                    <span class="status-pill {% if account.is_active %}
-                        status-ok
-                      {% else %}
-                        status-muted
-                      {% endif %}">
-                      <i></i>{% if account.is_active %}
-                        Active
-                      {% else %}
-                        Inactive
-                      {% endif %}
-                    </span>
-                  </td>
-                  <td class="table-secondary">{{ account.date_joined|date:'M j, Y' }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      {% else %}
-        <div class="empty-state compact-empty">
-          <strong>No managed accounts yet</strong><p>Accounts you create or are assigned will be listed here.</p>
-        </div>
-      {% endif %}
-    </section>
-  {% endif %}
 {% endblock %}

@@ -117,7 +117,7 @@
       <td><div class="table-user"><span><strong>{{ account.get_full_name|default:account.username }}</strong><small>{{ account.email|default:account.username }}{% if account.mobile %} · {{ account.mobile }}{% endif %}</small></span></div></td>
       <td><span class="account-role-tag role-{{ account.role|lower }}">{{ account.get_role_display }}</span></td>
       <td><span class="status-pill {% if account.is_active %}status-ok{% else %}status-muted{% endif %}"><i></i>{% if account.is_active %}Active{% else %}Inactive{% endif %}</span></td>
-      <td class="table-secondary">{{ account.date_joined|date:"M j, Y" }}</td>
+      <td>{{ account.date_joined|date:"M j, Y" }}</td>
       <td><a class="button button-small button-soft manage-account-button" href="{% url 'portal-account-detail' account.id %}">Manage <span>→</span></a></td>
     </tr>
   {% endfor %}

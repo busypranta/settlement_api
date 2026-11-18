@@ -62,7 +62,7 @@
                   {{ log.duration_ms|default:'—' }}{% if log.duration_ms != None %} ms{% endif %}
                 </td>
                 <td>{{ log.merchant_uid|default:'—' }}</td>
-                <td class="table-secondary">{{ log.created_at|date:'M j, Y · H:i:s' }}</td>
+                <td>{{ log.created_at|date:'M j, Y · H:i:s' }}</td>
               </tr>
             {% endfor %}
           </tbody>

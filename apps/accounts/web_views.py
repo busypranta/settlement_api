@@ -125,25 +125,29 @@ def assign_merchants(request, account, merchants):
 
 @login_required
 def dashboard(request):
-    users = scoped_users(request.user)
     merchants = scoped_merchants(request.user)
     logs = scoped_logs(request.user)
     active_merchants = merchants.filter(is_active=True)
-    user_assignments = UserMerchant.objects.filter(
-        user__in=users,
-    ).select_related('user', 'merchant')
+    is_admin = request.user.role in (User.ROLE_ADMIN, User.ROLE_SUPERADMIN) or request.user.is_superuser
+
+    log_stats = logs.aggregate(
+        api_call_count=Count('pk'),
+        failed_call_count=Count('pk', filter=Q(http_status__gte=400)),
+    )
     context = {
-        'user_count': users.count(),
-        'active_user_count': users.filter(is_active=True).count(),
         'merchant_count': active_merchants.count(),
-        'api_call_count': logs.count(),
-        'failed_call_count': logs.filter(http_status__gte=400).count(),
+        'api_call_count': log_stats['api_call_count'] or 0,
+        'failed_call_count': log_stats['failed_call_count'] or 0,
         'recent_logs': logs.order_by('-created_at')[:8],
-        'managed_users': users.order_by('username')[:8],
-        'user_assignments': user_assignments[:8],
         'assigned_merchants': active_merchants.order_by('merchant_name')[:8],
-        'is_admin': request.user.role in (User.ROLE_ADMIN, User.ROLE_SUPERADMIN) or request.user.is_superuser,
+        'is_admin': is_admin,
     }
+    if is_admin:
+        user_stats = scoped_users(request.user).aggregate(
+            user_count=Count('pk'),
+            active_user_count=Count('pk', filter=Q(is_active=True)),
+        )
+        context.update(user_stats)
     return render(request, 'portal/dashboard.html', context)
 
 
@@ -638,7 +642,7 @@ def account_detail(request, user_id):
         messages.error(request, 'Account administration is available to admins only.')
         return redirect('portal-dashboard')
 
-    all_users = scoped_users(request.user)
+    all_users = scoped_users(request.user).select_related('created_by')
     account = get_object_or_404(all_users, pk=user_id)
     is_superadmin = request.user.role == User.ROLE_SUPERADMIN or request.user.is_superuser
     is_user = account.role == User.ROLE_USER
@@ -656,7 +660,7 @@ def account_detail(request, user_id):
     )
     admin_form = (
         AdminUserAssignmentForm(user_queryset=assignable_users, fixed_user=account)
-        if is_superadmin else None
+        if is_superadmin and is_user else None
     )
 
     if request.method == 'POST':
@@ -732,8 +736,8 @@ def account_detail(request, user_id):
                 merchants=merchant_queryset,
                 fixed_user=account,
             )
-            if not can_edit:
-                messages.error(request, 'That account is outside your management scope.')
+            if not can_edit or not is_user:
+                messages.error(request, 'That account is outside your merchant assignment scope.')
             elif bulk_form.is_valid():
                 created = assign_merchants(request, account, bulk_form.cleaned_data['merchants'])
                 if created:
@@ -748,7 +752,7 @@ def account_detail(request, user_id):
                 pk=request.POST.get('assignment_id'),
                 user=account,
             ).first()
-            if not can_edit or assignment is None:
+            if not can_edit or not is_user or assignment is None:
                 messages.error(request, 'That assignment is outside your management scope.')
             else:
                 audit_action(request, 'merchant.unassigned', assignment, {
@@ -759,7 +763,7 @@ def account_detail(request, user_id):
                 messages.success(request, f'{assignment.merchant.merchant_name} was removed from {account.username}.')
                 return redirect(detail_url)
 
-        elif action in ('assign_admin_user', 'unassign_admin_user') and is_superadmin:
+        elif action in ('assign_admin_user', 'unassign_admin_user') and is_superadmin and is_user:
             admin_form = AdminUserAssignmentForm(
                 request.POST,
                 user_queryset=assignable_users,
@@ -795,12 +799,18 @@ def account_detail(request, user_id):
         else:
             messages.error(request, 'Unknown account action.')
 
-    assigned_merchants = UserMerchant.objects.filter(
-        user=account,
-    ).select_related('merchant').order_by('merchant__merchant_name')
+    assigned_merchants = list(
+        UserMerchant.objects.filter(user=account)
+        .select_related('merchant')
+        .order_by('merchant__merchant_name')
+    )
     admin_assignments = (
-        AdminUserAssignment.objects.filter(user=account).select_related('admin').order_by('admin__username')
-        if is_superadmin else []
+        list(
+            AdminUserAssignment.objects.filter(user=account)
+            .select_related('admin')
+            .order_by('admin__username')
+        )
+        if is_superadmin and is_user else []
     )
     return render(request, 'portal/account_detail.html', {
         'account': account,
