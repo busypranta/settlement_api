@@ -52,7 +52,18 @@
           {{ assignment_form.non_field_errors }}
           {% for field in assignment_form %}
             <div class="form-field">
-              <label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}
+              {% if field.name == 'merchant' and lazy_merchant_select %}
+                <label for="merchant-lookup-{{ field.id_for_label }}">{{ field.label }}</label>
+                <div class="lazy-merchant-select"
+                  data-lazy-merchant-select
+                  data-options-url="{% url 'portal-merchant-options' %}"
+                  data-user-select="#{{ assignment_form.user.id_for_label }}">
+                  <input id="merchant-lookup-{{ field.id_for_label }}" class="form-control lazy-merchant-search" data-lazy-merchant-search type="search" placeholder="Search merchants by name or UID" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="{{ field.id_for_label }}-options" required>
+                  <div class="lazy-merchant-options" id="{{ field.id_for_label }}-options" role="listbox" hidden></div>{{ field }}
+                </div>
+              {% else %}
+                <label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}
+              {% endif %}{% for error in field.errors %}
                 <span class="field-error">{{ error }}</span>
               {% endfor %}
             </div>
@@ -63,7 +74,7 @@
     </div>
   {% endif %}
 
-  <section class="panel full-panel">
+  <section class="panel full-panel merchant-directory" id="merchant-directory">
     <div class="panel-heading">
       <div>
         <h2>
@@ -72,9 +83,12 @@
           {% else %}
             Assigned merchants
           {% endif %}
-        </h2><p>{{ merchants|length }} merchant{{ merchants|length|pluralize }} visible to your account</p>
+        </h2><p>{{ page_obj.paginator.count }} merchant{{ page_obj.paginator.count|pluralize }}{% if query %} matching “{{ query }}”{% endif %} visible to your account</p>
       </div>
-      <label class="search-box"><span>⌕</span><input data-table-search type="search" placeholder="Search by name or UID" /></label>
+      <form method="get" class="merchant-directory-controls">
+        <label class="search-box"><span>⌕</span><input name="q" type="search" placeholder="Search by name or UID" value="{{ query }}"></label>
+        <button class="button button-soft" type="submit">Search</button>
+      </form>
     </div>
     {% if merchants %}
       <div class="table-wrap">
@@ -84,7 +98,6 @@
               <th>Merchant</th>
               <th>Merchant UID</th>
               <th>Status</th>
-              <th>API availability</th>
               {% if is_admin %}
                 <th>Manage</th>
               {% endif %}
@@ -92,7 +105,7 @@
           </thead>
           <tbody>
             {% for merchant in merchants %}
-              <tr data-search-row>
+              <tr>
                 <td>
                   <div class="table-user">
                     <span class="merchant-avatar">{{ merchant.merchant_name|slice:':1'|upper }}</span><span><strong>{{ merchant.merchant_name }}</strong><small>Registered merchant</small></span>
@@ -114,33 +127,29 @@
                     {% endif %}
                   </span>
                 </td>
-                <td>
-                  {% if merchant.is_active %}
-                    <span class="availability"><i></i>Available to use</span>
-                  {% else %}
-                    <span class="table-secondary">Contact your administrator</span>
-                  {% endif %}
-                </td>
                 {% if is_admin %}
                   <td>
                     {% if merchant.id in manageable_merchant_ids %}
-                      <form method="post" data-confirm="{% if merchant.is_active %}Deactivate{% else %}Activate{% endif %} {{ merchant.merchant_name }}?">
-                        {% csrf_token %}
-                        <input type="hidden" name="action" value="toggle_merchant" />
-                        <input type="hidden" name="merchant_id" value="{{ merchant.id }}" />
-                        <button class="button button-small {% if merchant.is_active %}
-                            button-danger
-                          {% else %}
-                            button-soft
-                          {% endif %}"
-                          type="submit">
-                          {% if merchant.is_active %}
-                            Deactivate
-                          {% else %}
-                            Activate
-                          {% endif %}
-                        </button>
-                      </form>
+                      <div class="merchant-actions">
+                        <button class="button button-small button-soft" type="button" data-open-merchant-edit data-merchant-id="{{ merchant.id }}" data-merchant-name="{{ merchant.merchant_name }}" data-merchant-uid="{{ merchant.merchant_uid }}">Edit</button>
+                        <form method="post" data-confirm="{% if merchant.is_active %}Deactivate{% else %}Activate{% endif %} {{ merchant.merchant_name }}?">
+                          {% csrf_token %}
+                          <input type="hidden" name="action" value="toggle_merchant" />
+                          <input type="hidden" name="merchant_id" value="{{ merchant.id }}" />
+                          <button class="button button-small {% if merchant.is_active %}
+                              button-danger
+                            {% else %}
+                              button-soft
+                            {% endif %}"
+                            type="submit">
+                            {% if merchant.is_active %}
+                              Deactivate
+                            {% else %}
+                              Activate
+                            {% endif %}
+                          </button>
+                        </form>
+                      </div>
                     {% else %}
                       <span class="table-secondary">Outside scope</span>
                     {% endif %}
@@ -151,16 +160,27 @@
           </tbody>
         </table>
       </div>
+      {% if page_obj.paginator.num_pages > 1 %}
+        <nav class="pagination-controls" aria-label="Merchant pages">
+          {% if page_obj.has_previous %}<a class="button button-soft" href="?q={{ query|urlencode }}&amp;page={{ page_obj.previous_page_number }}">Previous</a>{% else %}<span></span>{% endif %}
+          <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }} · {{ page_obj.paginator.count }} matching merchants</span>
+          {% if page_obj.has_next %}<a class="button button-soft" href="?q={{ query|urlencode }}&amp;page={{ page_obj.next_page_number }}">Next</a>{% else %}<span></span>{% endif %}
+        </nav>
+      {% endif %}
     {% else %}
       <div class="empty-state">
         <span class="empty-icon">◈</span><strong>
-          {% if is_admin %}
+          {% if query %}
+            No merchants match “{{ query }}”
+          {% elif is_admin %}
             No merchants in scope yet
           {% else %}
             No merchants assigned
           {% endif %}
         </strong><p>
-          {% if is_admin %}
+          {% if query %}
+            Try a different name or UID.
+          {% elif is_admin %}
             Add a merchant above or ask a SUPERADMIN to assign users to you.
           {% else %}
             Ask your administrator to grant merchant access.
@@ -169,4 +189,237 @@
       </div>
     {% endif %}
   </section>
+
+  {% if is_admin %}
+    <dialog class="merchant-edit-dialog" id="merchant-edit-dialog" aria-labelledby="merchant-edit-title">
+      <form method="post" class="merchant-edit-form">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="edit_merchant">
+        <input type="hidden" name="merchant_id" id="edit-merchant-id" value="{{ edit_merchant_form.instance.pk|default:'' }}">
+        <div class="panel-heading">
+          <div>
+            <h2 id="merchant-edit-title">Edit merchant</h2>
+            <p id="merchant-edit-copy">Update the merchant name or UID.</p>
+          </div>
+          <button class="dialog-close" type="button" data-close-merchant-edit aria-label="Close">×</button>
+        </div>
+        <div class="merchant-edit-content">
+          {{ edit_merchant_form.non_field_errors }}
+          {% for field in edit_merchant_form %}
+            <div class="form-field">
+              <label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}
+                <span class="field-error">{{ error }}</span>
+              {% endfor %}{% if field.help_text %}
+                <span class="field-help">{{ field.help_text }}</span>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+        <div class="merchant-edit-actions">
+          <button class="button button-soft" type="button" data-close-merchant-edit>Cancel</button>
+          <button class="button button-primary" type="submit">Save changes</button>
+        </div>
+      </form>
+    </dialog>
+  {% endif %}
+
+  <script>
+    (() => {
+      const editDialog = document.getElementById('merchant-edit-dialog');
+      if (editDialog) {
+        const editId = document.getElementById('edit-merchant-id');
+        const editName = document.getElementById('{{ edit_merchant_form.merchant_name.id_for_label }}');
+        const editUid = document.getElementById('{{ edit_merchant_form.merchant_uid.id_for_label }}');
+        const editCopy = document.getElementById('merchant-edit-copy');
+        document.querySelectorAll('[data-open-merchant-edit]').forEach((button) => {
+          button.addEventListener('click', () => {
+            editId.value = button.dataset.merchantId;
+            editName.value = button.dataset.merchantName;
+            editUid.value = button.dataset.merchantUid;
+            editCopy.textContent = `Update the name or UID for ${button.dataset.merchantName}.`;
+            editDialog.showModal();
+            editName.focus();
+            editName.select();
+          });
+        });
+        editDialog.querySelectorAll('[data-close-merchant-edit]').forEach((button) => {
+          button.addEventListener('click', () => editDialog.close());
+        });
+        editDialog.addEventListener('click', (event) => {
+          if (event.target === editDialog) editDialog.close();
+        });
+        {% if edit_merchant_open %}editDialog.showModal();{% endif %}
+      }
+
+      document.querySelectorAll('[data-lazy-merchant-select]').forEach((root) => {
+        const input = root.querySelector('[data-lazy-merchant-search]');
+        const list = root.querySelector('[data-lazy-merchant-options]');
+        const hidden = root.querySelector('[data-lazy-merchant-input]');
+        const userSelect = document.querySelector(root.dataset.userSelect);
+        const url = root.dataset.optionsUrl;
+        const pageSize = 10;
+        let loading = false;
+        let pending = null;
+        let debounceTimer = null;
+        let offset = 0;
+        let hasMore = false;
+        let loaded = false;
+
+        const openList = () => {
+          list.hidden = false;
+          input.setAttribute('aria-expanded', 'true');
+        };
+        const closeList = () => {
+          list.hidden = true;
+          input.setAttribute('aria-expanded', 'false');
+        };
+        const clearSelection = () => {
+          hidden.value = '';
+          input.setCustomValidity('Choose a merchant from the list.');
+        };
+        const setStatus = (message) => {
+          let status = list.querySelector('.lazy-merchant-status');
+          if (!status) {
+            status = document.createElement('div');
+            status.className = 'lazy-merchant-status';
+            list.prepend(status);
+          }
+          status.textContent = message;
+        };
+        const renderOptions = (data, append) => {
+          list.querySelectorAll('.lazy-merchant-status, .lazy-merchant-more').forEach((node) => node.remove());
+          if (!append) list.innerHTML = '';
+          data.results.forEach((item) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'lazy-merchant-option';
+            button.dataset.value = String(item.id);
+            button.setAttribute('role', 'option');
+            button.disabled = item.assigned;
+            button.setAttribute('aria-disabled', String(item.assigned));
+            const label = `${item.name} · ${item.uid}`;
+            button.textContent = item.assigned ? `${label} — already assigned` : label;
+            button.addEventListener('click', () => {
+              if (item.assigned) return;
+              hidden.value = String(item.id);
+              input.value = label;
+              input.setCustomValidity('');
+              closeList();
+            });
+            list.append(button);
+          });
+          offset = data.next_offset;
+          hasMore = data.has_more;
+          setStatus(data.total ? `Showing ${offset} of ${data.total} merchants` : 'No merchants match your search.');
+          if (hasMore) {
+            const more = document.createElement('button');
+            more.type = 'button';
+            more.className = 'lazy-merchant-more';
+            more.textContent = `Load ${Math.min(pageSize, data.total - offset)} more`;
+            more.addEventListener('click', () => load({ append: true }));
+            list.append(more);
+          }
+        };
+        const load = async ({ append = false, init = false } = {}) => {
+          if (loading) {
+            pending = { append, init };
+            return;
+          }
+          loading = true;
+          const params = new URLSearchParams({ offset: append ? String(offset) : '0' });
+          const query = init ? '' : input.value.trim();
+          if (query) params.set('q', query);
+          if (userSelect && userSelect.value) params.set('user_id', userSelect.value);
+          if (init && hidden.value) params.set('id', hidden.value);
+          setStatus('Loading merchants…');
+          try {
+            const response = await fetch(`${url}?${params.toString()}`, {
+              headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            if (!response.ok) throw new Error('Unable to load merchants');
+            const data = await response.json();
+            renderOptions(data, append);
+            loaded = true;
+            if (init && hidden.value) {
+              const selected = data.results.find((item) => String(item.id) === String(hidden.value));
+              if (selected) input.value = `${selected.name} · ${selected.uid}`;
+              input.setCustomValidity(hidden.value ? '' : 'Choose a merchant from the list.');
+            }
+          } catch (error) {
+            setStatus('Could not load merchants. Please try again.');
+          } finally {
+            loading = false;
+            if (pending) {
+              const next = pending;
+              pending = null;
+              load(next);
+            }
+          }
+        };
+
+        input.setCustomValidity(hidden.value ? '' : 'Choose a merchant from the list.');
+        load({ init: true });
+        input.addEventListener('focus', () => {
+          openList();
+          if (!loaded) load({ init: true });
+        });
+        input.addEventListener('input', () => {
+          clearSelection();
+          openList();
+          window.clearTimeout(debounceTimer);
+          debounceTimer = window.setTimeout(() => load(), 200);
+        });
+        input.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape') {
+            closeList();
+            return;
+          }
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            list.querySelector('.lazy-merchant-option:not(:disabled)')?.focus();
+          }
+          if (event.key === 'Enter' && !list.hidden) {
+            const first = list.querySelector('.lazy-merchant-option:not(:disabled)');
+            if (first && !first.matches(':focus')) {
+              event.preventDefault();
+              first.click();
+            }
+          }
+        });
+        list.addEventListener('keydown', (event) => {
+          const buttons = Array.from(list.querySelectorAll('.lazy-merchant-option:not(:disabled)'));
+          const currentIndex = buttons.indexOf(document.activeElement);
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            const direction = event.key === 'ArrowDown' ? 1 : -1;
+            buttons[(currentIndex + direction + buttons.length) % buttons.length]?.focus();
+          } else if (event.key === 'Escape') {
+            closeList();
+            input.focus();
+          } else if (event.key === 'Enter' && document.activeElement.classList.contains('lazy-merchant-option')) {
+            event.preventDefault();
+            document.activeElement.click();
+          }
+        });
+        document.addEventListener('click', (event) => {
+          if (!root.contains(event.target)) closeList();
+        });
+        if (userSelect) {
+          userSelect.addEventListener('change', () => {
+            clearSelection();
+            input.value = '';
+            loaded = false;
+            load({ init: true });
+          });
+        }
+        root.closest('form')?.addEventListener('submit', (event) => {
+          if (!hidden.value) {
+            input.setCustomValidity('Choose a merchant from the list.');
+            input.reportValidity();
+            event.preventDefault();
+          }
+        });
+      });
+    })();
+  </script>
 {% endblock %}
