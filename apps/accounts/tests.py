@@ -710,7 +710,8 @@ class PortalVisibilityTests(TestCase):
 
         merchant_page = self.client.get(reverse('portal-merchant-access'))
         self.assertEqual(merchant_page.status_code, 200)
-        self.assertEqual(merchant_page.content.count(b'data-searchable-select="true"'), 2)
+        self.assertEqual(merchant_page.content.count(b'data-searchable-select="true"'), 1)
+        self.assertContains(merchant_page, b'data-lazy-merchant-select')
 
     def test_admin_cannot_create_another_admin_or_manage_out_of_scope_user(self):
         admin = User.objects.create_user(
@@ -862,3 +863,135 @@ class PortalVisibilityTests(TestCase):
         })
         self.assertRedirects(response, reverse('portal-managed-accounts'))
         self.assertFalse(AdminUserAssignment.objects.filter(admin=admin, user=self.user).exists())
+
+    def test_merchant_table_is_paginated_and_searchable(self):
+        superadmin = User.objects.create_superuser(
+            username='merchant-directory-admin',
+            email='directory-admin@example.test',
+            password='DirectoryAdmin!9284',
+        )
+        for index in range(30):
+            PortalMerchant.objects.create(
+                merchant_uid=f'bulk-merchant-{index:02d}',
+                merchant_name=f'Bulk Merchant {index:02d}',
+            )
+        self.client.force_login(superadmin)
+
+        url = reverse('portal-merchant-access')
+        first_page = self.client.get(url)
+        self.assertEqual(first_page.status_code, 200)
+        self.assertEqual(first_page.context['page_obj'].paginator.count, 32)
+        self.assertEqual(len(first_page.context['merchants']), 25)
+        self.assertContains(first_page, 'Page 1 of 2')
+        self.assertNotContains(first_page, 'API availability')
+        self.assertContains(first_page, 'name="q"')
+
+        second_page = self.client.get(url, {'page': 2})
+        self.assertEqual(len(second_page.context['merchants']), 7)
+        self.assertContains(second_page, 'Page 2 of 2')
+
+        search = self.client.get(url, {'q': 'merchant-visible'})
+        self.assertEqual(search.context['page_obj'].paginator.count, 1)
+        self.assertContains(search, self.merchant.merchant_uid)
+        self.assertNotContains(search, self.other_merchant.merchant_uid)
+
+        name_search = self.client.get(url, {'q': 'Bulk Merchant 03'})
+        self.assertEqual(name_search.context['page_obj'].paginator.count, 1)
+        self.assertContains(name_search, 'bulk-merchant-03')
+
+    def test_admin_can_edit_merchant_name_and_uid(self):
+        admin = User.objects.create_user(
+            username='merchant-editor',
+            password='EditorPassword!9284',
+            role=User.ROLE_ADMIN,
+        )
+        merchant = PortalMerchant.objects.create(
+            merchant_uid='editable-merchant',
+            merchant_name='Editable Merchant',
+            created_by=admin,
+        )
+        self.client.force_login(admin)
+
+        page = self.client.get(reverse('portal-merchant-access'))
+        self.assertContains(page, 'data-open-merchant-edit')
+        self.assertContains(page, 'merchant-edit-dialog')
+
+        response = self.client.post(reverse('portal-merchant-access'), {
+            'action': 'edit_merchant',
+            'merchant_id': merchant.pk,
+            'merchant_name': 'Renamed Editable Merchant',
+            'merchant_uid': 'editable-merchant-updated',
+        })
+        self.assertRedirects(response, reverse('portal-merchant-access'))
+        merchant.refresh_from_db()
+        self.assertEqual(merchant.merchant_name, 'Renamed Editable Merchant')
+        self.assertEqual(merchant.merchant_uid, 'editable-merchant-updated')
+
+    def test_admin_cannot_edit_merchant_outside_scope(self):
+        admin = User.objects.create_user(
+            username='outside-scope-editor',
+            password='EditorPassword!9284',
+            role=User.ROLE_ADMIN,
+        )
+        UserMerchant.objects.create(user=self.other_user, merchant=self.merchant)
+        self.client.force_login(admin)
+
+        response = self.client.post(reverse('portal-merchant-access'), {
+            'action': 'edit_merchant',
+            'merchant_id': self.merchant.pk,
+            'merchant_name': 'Should Not Change',
+            'merchant_uid': 'should-not-change',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.merchant.refresh_from_db()
+        self.assertEqual(self.merchant.merchant_name, 'Visible Merchant')
+        self.assertEqual(self.merchant.merchant_uid, 'merchant-visible')
+
+    def test_merchant_options_are_lazy_limited_and_flag_assigned_merchants(self):
+        superadmin = User.objects.create_superuser(
+            username='options-admin',
+            email='options-admin@example.test',
+            password='OptionsAdmin!9284',
+        )
+        for index in range(12):
+            PortalMerchant.objects.create(
+                merchant_uid=f'option-merchant-{index:02d}',
+                merchant_name=f'Option Merchant {index:02d}',
+            )
+        self.client.force_login(superadmin)
+        url = reverse('portal-merchant-options')
+
+        response = self.client.get(url, {'user_id': self.user.pk})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['page_size'], 10)
+        self.assertEqual(len(data['results']), 10)
+        self.assertEqual(data['total'], 14)
+        self.assertTrue(data['has_more'])
+        self.assertEqual(data['next_offset'], 10)
+        self.assertFalse(any(item['assigned'] for item in data['results']))
+
+        assigned_lookup = self.client.get(url, {
+            'q': self.merchant.merchant_uid,
+            'user_id': self.user.pk,
+        })
+        self.assertTrue(assigned_lookup.json()['results'][0]['assigned'])
+        unassigned_lookup = self.client.get(url, {
+            'q': self.other_merchant.merchant_uid,
+            'user_id': self.user.pk,
+        })
+        self.assertFalse(unassigned_lookup.json()['results'][0]['assigned'])
+
+        second_batch = self.client.get(url, {'offset': data['next_offset']})
+        self.assertEqual(len(second_batch.json()['results']), 4)
+
+        searched = self.client.get(url, {'q': 'Option Merchant 03'})
+        self.assertEqual(searched.json()['total'], 1)
+        self.assertEqual(searched.json()['results'][0]['uid'], 'option-merchant-03')
+
+        by_id = self.client.get(url, {'id': self.other_merchant.pk})
+        self.assertEqual([item['id'] for item in by_id.json()['results']], [self.other_merchant.pk])
+
+        self.client.force_login(self.user)
+        forbidden = self.client.get(url)
+        self.assertEqual(forbidden.status_code, 403)
