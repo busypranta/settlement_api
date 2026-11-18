@@ -1,0 +1,194 @@
+{% extends "portal/base.html" %}
+{% block title %}{{ account.username }}{% endblock %}
+{% block breadcrumb %}<a href="{% url 'portal-managed-accounts' %}">Accounts</a> / {{ account.username }}{% endblock %}
+{% block content %}
+<div class="page-heading heading-with-action">
+  <div>
+    <span class="section-kicker">ACCOUNT DETAILS</span>
+    <h1>{{ account.get_full_name|default:account.username }}</h1>
+  </div>
+  <a class="button button-soft" href="{% url 'portal-managed-accounts' %}">← Back to accounts</a>
+</div>
+
+<div class="detail-summary-grid">
+  <article class="detail-summary-item"><span>Username</span><strong>{{ account.username }}</strong></article>
+  <article class="detail-summary-item"><span>Role</span><strong>{{ account.get_role_display }}</strong></article>
+  <article class="detail-summary-item"><span>Status</span><strong class="{% if account.is_active %}text-positive{% else %}text-muted{% endif %}">{% if account.is_active %}Active{% else %}Inactive{% endif %}</strong></article>
+  <article class="detail-summary-item"><span>Merchants</span><strong>{{ assigned_merchants|length }}</strong></article>
+  <article class="detail-summary-item"><span>Joined</span><strong>{{ account.date_joined|date:"M j, Y" }}</strong></article>
+</div>
+
+<div class="detail-two-column">
+  <section class="panel detail-panel">
+    <div class="panel-heading"><div><h2>Account details</h2><p>View or edit name, contact information, and role.</p></div><span class="stat-icon icon-teal">✎</span></div>
+    <form method="post" class="detail-form" data-account-edit-form>
+      {% csrf_token %}<input type="hidden" name="action" value="edit_account">
+      {{ edit_form.non_field_errors }}
+      {% if 'role' in edit_form.fields %}<input type="hidden" name="role" value="{{ edit_form.role.value|default:'' }}">{% endif %}
+      {% for field in edit_form %}
+      <div class="form-field">
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}
+        {% for error in field.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+      </div>
+      {% endfor %}
+      <div class="detail-form-actions">
+        <button class="button button-soft" type="button" data-edit-account {% if not can_edit %}disabled{% endif %}>Edit details</button>
+        <button class="button button-primary" type="submit" data-update-account hidden>Update account <span>→</span></button>
+        <button class="button button-soft" type="button" data-cancel-edit hidden>Cancel</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel detail-panel">
+    <div class="panel-heading"><div><h2>Account controls</h2></div><span class="stat-icon icon-amber">⚙</span></div>
+    <div class="detail-control-list">
+      {% if can_edit and account.role != 'SUPERADMIN' %}
+      <div class="detail-control">
+        <div><strong>{% if account.is_active %}Deactivate account{% else %}Activate account{% endif %}</strong><span>{% if account.is_active %}Block this account from signing in and using the API.{% else %}Restore sign-in and API access for this account.{% endif %}</span></div>
+        <form method="post" data-confirm="{% if account.is_active %}Deactivate{% else %}Activate{% endif %} {{ account.username }}?">
+          {% csrf_token %}<input type="hidden" name="action" value="toggle_user">
+          <button class="button button-small {% if account.is_active %}button-danger{% else %}button-soft{% endif %}" type="submit">{% if account.is_active %}Deactivate{% else %}Activate{% endif %}</button>
+        </form>
+      </div>
+      <div class="detail-control">
+        <div><strong>Reset password</strong><span>Set a new temporary password and revoke active tokens.</span></div>
+        <button class="button button-small button-soft" type="button" data-open-reset data-user-id="{{ account.id }}" data-username="{{ account.username }}" data-reset-url="{% url 'portal-account-detail' account.id %}">Reset password</button>
+      </div>
+      {% endif %}
+
+      {% if is_user and can_edit %}
+      <div class="detail-control">
+        <div><strong>Multiple-merchant API</strong><span>Allow requests that cover more than one merchant.</span></div>
+        <form method="post" data-confirm="{% if account.allow_multiple_merchants %}Disable{% else %}Enable{% endif %} multi-merchant API access for {{ account.username }}?">
+          {% csrf_token %}<input type="hidden" name="action" value="toggle_multi_merchant_access">
+          <button class="access-toggle {% if account.allow_multiple_merchants %}enabled{% endif %}" type="submit">{% if account.allow_multiple_merchants %}Enabled{% else %}Disabled{% endif %}</button>
+        </form>
+      </div>
+      <div class="detail-control">
+        <div><strong>Settlement transactions API</strong><span>Allow access to the merchant transactions endpoint.</span></div>
+        <form method="post" data-confirm="{% if account.allow_settlement_transactions %}Disable{% else %}Enable{% endif %} settlement transactions API access for {{ account.username }}?">
+          {% csrf_token %}<input type="hidden" name="action" value="toggle_settlement_transactions">
+          <button class="access-toggle {% if account.allow_settlement_transactions %}enabled{% endif %}" type="submit">{% if account.allow_settlement_transactions %}Enabled{% else %}Disabled{% endif %}</button>
+        </form>
+      </div>
+      {% endif %}
+
+      {% if not can_edit %}<p class="detail-control-note">This account is outside your management scope.</p>{% endif %}
+    </div>
+  </section>
+</div>
+
+<section class="panel detail-panel">
+  <div class="panel-heading">
+    <div><h2>Assigned merchants</h2><p>{{ assigned_merchants|length }} merchant{{ assigned_merchants|length|pluralize }} with API access to this account.</p></div>
+    <span class="stat-icon icon-violet">◈</span>
+  </div>
+  {% if assigned_merchants %}
+  <div class="assigned-merchant-grid">
+    {% for assignment in assigned_merchants %}
+    <div class="assigned-merchant-item">
+      <div><strong>{{ assignment.merchant.merchant_name }}</strong><code>{{ assignment.merchant.merchant_uid }}</code></div>
+      {% if can_edit %}
+      <form method="post" data-confirm="Remove {{ assignment.merchant.merchant_name }} access from {{ account.username }}?">
+        {% csrf_token %}<input type="hidden" name="action" value="unassign_merchant"><input type="hidden" name="assignment_id" value="{{ assignment.id }}">
+        <button class="button button-small button-danger" type="submit">Remove</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="assignment-empty"><strong>No merchants assigned yet</strong><span>Use the picker below to grant single or multiple merchant access.</span></div>
+  {% endif %}
+</section>
+
+<section class="panel detail-panel">
+  <div class="panel-heading"><div><h2>Grant merchant access</h2></div><span class="stat-icon icon-teal">＋</span></div>
+  <form method="post" class="detail-merchant-form">
+    {% csrf_token %}<input type="hidden" name="action" value="assign_merchant">
+    {{ merchant_form.user }}
+    {{ merchant_form.non_field_errors }}
+    {% for field in merchant_form %}
+      {% if field.name == 'merchants' %}
+      <div class="form-field form-field-wide">
+        <label>{{ field.label }}</label>
+        {% include "portal/includes/merchant_picker.html" with picker_id="detail-merchant" options_url=merchant_options_url user_id=account.pk input_name="merchants" %}
+        {% for error in field.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+      </div>
+      {% endif %}
+    {% endfor %}
+    <div class="detail-form-actions"><button class="button button-primary" type="submit" {% if not can_edit %}disabled{% endif %}>Grant access <span>→</span></button></div>
+  </form>
+</section>
+
+{% if is_superadmin and admin_form %}
+<section class="panel detail-panel">
+  <div class="panel-heading"><div><h2>Admin scope</h2></div><span class="stat-icon icon-blue">⇄</span></div>
+  <form method="post" class="detail-form">
+    {% csrf_token %}<input type="hidden" name="action" value="assign_admin_user">
+    {{ admin_form.user }}
+    {{ admin_form.non_field_errors }}
+    {% for field in admin_form %}
+      {% if field.name == 'admin' %}
+      <div class="form-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<span class="field-error">{{ error }}</span>{% endfor %}</div>
+      {% endif %}
+    {% endfor %}
+    <div class="detail-form-actions"><button class="button button-dark" type="submit">Assign to admin <span>→</span></button></div>
+  </form>
+  {% if admin_assignments %}
+  <div class="detail-admin-assignments">
+    {% for assignment in admin_assignments %}
+    <div class="detail-control">
+      <div><strong>{{ assignment.admin.get_full_name|default:assignment.admin.username }}</strong><span>{{ assignment.admin.email|default:assignment.admin.username }}</span></div>
+      <form method="post" data-confirm="Remove {{ account.username }} from {{ assignment.admin.username }}'s admin scope?">
+        {% csrf_token %}<input type="hidden" name="action" value="unassign_admin_user"><input type="hidden" name="admin" value="{{ assignment.admin_id }}">
+        <button class="button button-small button-danger" type="submit">Remove</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="assignment-empty"><strong>No explicit admin assignment</strong><span>Accounts created by an admin remain in that admin's scope automatically.</span></div>
+  {% endif %}
+</section>
+{% endif %}
+<script>
+  (() => {
+    const form = document.querySelector('[data-account-edit-form]');
+    if (!form) return;
+    const editButton = form.querySelector('[data-edit-account]');
+    const updateButton = form.querySelector('[data-update-account]');
+    const cancelButton = form.querySelector('[data-cancel-edit]');
+    const controls = Array.from(form.querySelectorAll('.form-control'));
+    const originals = new Map(controls.map((control) => [control, control.value]));
+
+    const setEditing = (editing) => {
+      controls.forEach((control) => {
+        if (control.tagName === 'SELECT') {
+          if (editing) control.removeAttribute('disabled');
+          else control.setAttribute('disabled', 'disabled');
+        } else {
+          if (editing) control.removeAttribute('readonly');
+          else control.setAttribute('readonly', 'readonly');
+        }
+        control.classList.toggle('detail-locked', !editing);
+      });
+      editButton.hidden = editing;
+      updateButton.hidden = !editing;
+      cancelButton.hidden = !editing;
+      form.classList.toggle('detail-editing', editing);
+      if (editing) controls[0]?.focus();
+    };
+
+    editButton.addEventListener('click', () => setEditing(true));
+    cancelButton.addEventListener('click', () => {
+      controls.forEach((control) => {
+        control.value = originals.get(control) ?? '';
+      });
+      setEditing(false);
+    });
+    // Keep fields editable when the server re-renders validation errors.
+    setEditing(Boolean(form.querySelector('.field-error')));
+  })();
+</script>
+{% endblock %}

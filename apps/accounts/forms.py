@@ -105,6 +105,53 @@ class AdminPasswordResetForm(forms.Form):
         return password
 
 
+class AccountEditForm(forms.ModelForm):
+    """Admin form for editing an existing account's contact details and role."""
+
+    class Meta:
+        model = User
+        fields = ('name', 'email', 'mobile', 'role')
+        widgets = {
+            'name': forms.TextInput(attrs={'autocomplete': 'name', 'minlength': '2', 'maxlength': '100'}),
+            'mobile': forms.TelInput(attrs={'autocomplete': 'tel', 'inputmode': 'tel', 'maxlength': '16'}),
+            'email': forms.EmailInput(attrs={'autocomplete': 'email'}),
+        }
+
+    def __init__(self, *args, actor, **kwargs):
+        super().__init__(*args, **kwargs)
+        if actor.role == User.ROLE_SUPERADMIN or actor.is_superuser:
+            self.fields['role'].choices = (
+                (User.ROLE_USER, 'User'),
+                (User.ROLE_ADMIN, 'Admin'),
+            )
+        else:
+            self.fields['role'].choices = ((User.ROLE_USER, 'User'),)
+        if self.instance.pk and self.instance.role == User.ROLE_SUPERADMIN:
+            self.fields.pop('role', None)
+        for field in self.fields.values():
+            field.widget.attrs.setdefault('class', 'form-control')
+            # Details start locked; the detail page's Edit button unlocks them.
+            field.widget.attrs['class'] = f"{field.widget.attrs['class']} detail-locked".strip()
+            if isinstance(field.widget, forms.Select):
+                # A hidden mirror input submits the value while the select is locked.
+                field.widget.attrs['disabled'] = 'disabled'
+            else:
+                field.widget.attrs['readonly'] = 'readonly'
+        self.fields['name'].required = True
+        self.fields['name'].min_length = 2
+        self.fields['mobile'].required = True
+        self.fields['email'].required = True
+
+    def clean_name(self):
+        name = ' '.join(self.cleaned_data['name'].split())
+        if len(name) < 2:
+            raise forms.ValidationError('Name must be at least 2 characters long.')
+        return name
+
+    def clean_mobile(self):
+        return normalize_bd_mobile(self.cleaned_data['mobile'])
+
+
 class MerchantCreateForm(forms.ModelForm):
     class Meta:
         model = PortalMerchant
@@ -190,20 +237,82 @@ class MerchantAssignmentForm(forms.Form):
             })
 
 
+class MerchantBulkAssignmentForm(forms.Form):
+    """Grant one or many merchants to an account in a single submission."""
+
+    user = forms.ModelChoiceField(queryset=User.objects.none(), label='Account')
+    merchants = forms.CharField(
+        label='Merchants',
+        required=False,
+        widget=forms.HiddenInput(attrs={'data-merchant-picker-input': 'true'}),
+    )
+
+    def __init__(
+        self, *args, users, merchants=None, fixed_user=None,
+        user_queryset=None, **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        merchant_queryset = merchants if merchants is not None else PortalMerchant.objects.all()
+        self.available_merchants = merchant_queryset.filter(is_active=True)
+
+        if fixed_user is not None:
+            self.fields['user'].widget = forms.HiddenInput()
+            self.fields['user'].initial = fixed_user.pk
+            self.fields['user'].queryset = User.objects.filter(pk=fixed_user.pk)
+        else:
+            self.fields['user'].queryset = (
+                user_queryset if user_queryset is not None
+                else users.filter(role=User.ROLE_USER).order_by('username')
+            )
+            self.fields['user'].widget.attrs.update({
+                'class': 'form-control',
+                'data-searchable-select': 'true',
+            })
+
+    def clean_merchants(self):
+        raw = self.cleaned_data.get('merchants') or ''
+        # Accept the legacy single-merchant field so older saved forms still work.
+        if not raw and self.data.get('merchant'):
+            raw = self.data['merchant']
+        ids = []
+        for value in str(raw).split(','):
+            value = value.strip()
+            if not value:
+                continue
+            if not value.isdigit():
+                raise forms.ValidationError('The merchant selection is invalid.')
+            ids.append(int(value))
+        ids = list(dict.fromkeys(ids))
+        if not ids:
+            raise forms.ValidationError('Choose at least one merchant.')
+
+        found = list(self.available_merchants.filter(pk__in=ids).order_by('merchant_name'))
+        found_ids = {merchant.pk for merchant in found}
+        if len(found_ids) != len(ids):
+            raise forms.ValidationError('One or more merchants are no longer available.')
+        return found
+
+
 class AdminUserAssignmentForm(forms.Form):
     admin = forms.ModelChoiceField(queryset=User.objects.none(), label='Admin')
     user = forms.ModelChoiceField(queryset=User.objects.none(), label='User')
 
-    def __init__(self, *args, user_queryset=None, **kwargs):
+    def __init__(self, *args, user_queryset=None, fixed_user=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['admin'].queryset = User.objects.filter(role=User.ROLE_ADMIN).order_by('username')
-        self.fields['user'].queryset = (
-            user_queryset if user_queryset is not None
-            else User.objects.filter(role=User.ROLE_USER).order_by('username')
-        )
+        if fixed_user is not None:
+            self.fields['user'].widget = forms.HiddenInput()
+            self.fields['user'].initial = fixed_user.pk
+            self.fields['user'].queryset = User.objects.filter(pk=fixed_user.pk)
+        else:
+            self.fields['user'].queryset = (
+                user_queryset if user_queryset is not None
+                else User.objects.filter(role=User.ROLE_USER).order_by('username')
+            )
         for field in self.fields.values():
-            field.widget.attrs['class'] = 'form-control'
-            field.widget.attrs['data-searchable-select'] = 'true'
+            if not isinstance(field.widget, forms.HiddenInput):
+                field.widget.attrs['class'] = 'form-control'
+                field.widget.attrs['data-searchable-select'] = 'true'
 
 
 class ProfileForm(forms.ModelForm):

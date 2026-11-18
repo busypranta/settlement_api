@@ -564,18 +564,17 @@ class PortalVisibilityTests(TestCase):
             created_by=admin,
         )
         self.client.force_login(admin)
-        response = self.client.post(reverse('portal-managed-accounts'), {
+        detail_url = reverse('portal-account-detail', args=[managed_user.pk])
+        response = self.client.post(detail_url, {
             'action': 'toggle_multi_merchant_access',
-            'user_id': managed_user.pk,
         })
-        self.assertRedirects(response, reverse('portal-managed-accounts'))
+        self.assertRedirects(response, detail_url)
         managed_user.refresh_from_db()
         self.assertTrue(managed_user.allow_multiple_merchants)
-        response = self.client.post(reverse('portal-managed-accounts'), {
+        response = self.client.post(detail_url, {
             'action': 'toggle_settlement_transactions',
-            'user_id': managed_user.pk,
         })
-        self.assertRedirects(response, reverse('portal-managed-accounts'))
+        self.assertRedirects(response, detail_url)
         managed_user.refresh_from_db()
         self.assertTrue(managed_user.allow_settlement_transactions)
 
@@ -702,13 +701,13 @@ class PortalVisibilityTests(TestCase):
         response = self.client.post(reverse('portal-managed-accounts'), {
             'action': 'assign_merchant',
             'user': account.pk,
-            'merchant': self.merchant.pk,
+            'merchants': str(self.merchant.pk),
         })
         self.assertRedirects(response, reverse('portal-managed-accounts'))
         self.assertTrue(UserMerchant.objects.filter(user=account, merchant=self.merchant).exists())
-        account_page = self.client.get(reverse('portal-managed-accounts'))
-        self.assertContains(account_page, self.merchant.merchant_uid)
-        self.assertContains(account_page, 'confirm-action-dialog')
+        detail_page = self.client.get(reverse('portal-account-detail', args=[account.pk]))
+        self.assertContains(detail_page, self.merchant.merchant_uid)
+        self.assertContains(detail_page, 'confirm-action-dialog')
 
         merchant_page = self.client.get(reverse('portal-merchant-access'))
         self.assertEqual(merchant_page.status_code, 200)
@@ -731,11 +730,12 @@ class PortalVisibilityTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(User.objects.filter(username='unexpected-admin').exists())
 
-        response = self.client.post(reverse('portal-managed-accounts'), {
+        detail_url = reverse('portal-account-detail', args=[self.user.pk])
+        self.assertEqual(self.client.get(detail_url).status_code, 404)
+        response = self.client.post(detail_url, {
             'action': 'toggle_user',
-            'user_id': self.user.pk,
         })
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 404)
         self.user.refresh_from_db()
         self.assertTrue(self.user.is_active)
 
@@ -865,6 +865,161 @@ class PortalVisibilityTests(TestCase):
         })
         self.assertRedirects(response, reverse('portal-managed-accounts'))
         self.assertFalse(AdminUserAssignment.objects.filter(admin=admin, user=self.user).exists())
+
+    def test_account_table_is_compact_with_single_manage_action(self):
+        superadmin = User.objects.create_superuser(
+            username='compact-admin',
+            email='compact-admin@example.test',
+            password='CompactAdmin!9284',
+        )
+        managed_user = User.objects.create_user(
+            username='compact-user',
+            email='compact@example.test',
+            password='CompactUser!9284',
+            role=User.ROLE_USER,
+        )
+        UserMerchant.objects.create(user=managed_user, merchant=self.merchant)
+        self.client.force_login(superadmin)
+
+        response = self.client.get(reverse('portal-managed-accounts'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'mini-avatar')
+        for header in ('Merchants', 'Multiple-merchant', 'Transactions API'):
+            self.assertNotContains(response, f'<th>{header}</th>')
+        self.assertContains(response, '<th>Manage</th>')
+        self.assertContains(
+            response,
+            f'href="{reverse("portal-account-detail", args=[managed_user.pk])}"',
+        )
+        self.assertNotContains(response, 'data-user-id=')
+        self.assertContains(response, 'data-merchant-picker')
+
+    def test_account_detail_page_shows_actions_and_assigned_merchants(self):
+        superadmin = User.objects.create_superuser(
+            username='detail-admin',
+            email='detail-admin@example.test',
+            password='DetailAdmin!9284',
+        )
+        self.client.force_login(superadmin)
+
+        response = self.client.get(reverse('portal-account-detail', args=[self.user.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.merchant.merchant_uid)
+        self.assertContains(response, 'Account details')
+        self.assertContains(response, 'Account controls')
+        self.assertContains(response, 'Assigned merchants')
+        self.assertContains(response, 'Multiple-merchant API')
+        self.assertContains(response, 'Settlement transactions API')
+        self.assertContains(response, 'data-open-reset')
+        self.assertContains(response, 'data-merchant-picker')
+        self.assertContains(response, 'data-edit-account')
+        self.assertContains(response, 'data-update-account hidden')
+        self.assertContains(response, 'readonly="readonly"')
+
+    def test_merchant_picker_flags_already_assigned_merchants(self):
+        superadmin = User.objects.create_superuser(
+            username='picker-admin',
+            email='picker-admin@example.test',
+            password='PickerAdmin!9284',
+        )
+        self.client.force_login(superadmin)
+        detail_url = reverse('portal-account-detail', args=[self.user.pk])
+
+        detail_page = self.client.get(detail_url)
+        self.assertContains(detail_page, f'data-user-id="{self.user.pk}"')
+
+        options = self.client.get(reverse('portal-merchant-options'), {
+            'user_id': self.user.pk,
+        }).json()
+        flags = {row['id']: row['assigned'] for row in options['results']}
+        self.assertTrue(flags[self.merchant.pk])
+        self.assertFalse(flags[self.other_merchant.pk])
+
+        listing_page = self.client.get(reverse('portal-managed-accounts'))
+        self.assertContains(listing_page, 'data-user-select="#id_user"')
+
+    def test_bulk_merchant_assignment_from_detail_page(self):
+        superadmin = User.objects.create_superuser(
+            username='bulk-admin',
+            email='bulk-admin@example.test',
+            password='BulkAdmin!9284',
+        )
+        extra_merchant = PortalMerchant.objects.create(
+            merchant_uid='bulk-extra', merchant_name='Bulk Extra Merchant',
+        )
+        self.client.force_login(superadmin)
+        detail_url = reverse('portal-account-detail', args=[self.user.pk])
+
+        response = self.client.post(detail_url, {
+            'action': 'assign_merchant',
+            'user': self.user.pk,
+            'merchants': f'{self.merchant.pk},{self.other_merchant.pk}',
+        })
+        self.assertRedirects(response, detail_url)
+        self.assertEqual(
+            set(UserMerchant.objects.filter(user=self.user).values_list('merchant_id', flat=True)),
+            {self.merchant.pk, self.other_merchant.pk},
+        )
+        # The multi-merchant API flag stays manual even with two assignments.
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.allow_multiple_merchants)
+
+        self.client.post(detail_url, {
+            'action': 'assign_merchant',
+            'user': self.user.pk,
+            'merchants': f'{self.merchant.pk},{extra_merchant.pk}',
+        })
+        self.assertEqual(
+            set(UserMerchant.objects.filter(user=self.user).values_list('merchant_id', flat=True)),
+            {self.merchant.pk, self.other_merchant.pk, extra_merchant.pk},
+        )
+
+        response = self.client.post(detail_url, {
+            'action': 'assign_merchant',
+            'user': self.user.pk,
+            'merchants': '999999',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(UserMerchant.objects.filter(user=self.user).count(), 3)
+
+    def test_account_detail_edit_and_status_actions(self):
+        superadmin = User.objects.create_superuser(
+            username='edit-admin',
+            email='edit-admin@example.test',
+            password='EditAdmin!9284',
+        )
+        self.client.force_login(superadmin)
+        detail_url = reverse('portal-account-detail', args=[self.user.pk])
+
+        response = self.client.post(detail_url, {
+            'action': 'edit_account',
+            'name': 'Updated Name',
+            'email': 'updated@example.test',
+            'mobile': '01812987654',
+            'role': User.ROLE_USER,
+        })
+        self.assertRedirects(response, detail_url)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.name, 'Updated Name')
+        self.assertEqual(self.user.email, 'updated@example.test')
+        self.assertEqual(self.user.mobile, '+8801812987654')
+
+        response = self.client.post(detail_url, {
+            'action': 'toggle_user',
+        })
+        self.assertRedirects(response, detail_url)
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.is_active)
+
+        response = self.client.post(detail_url, {
+            'action': 'reset_password',
+            'password': 'DetailReset!9284',
+        })
+        self.assertRedirects(response, detail_url)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('DetailReset!9284'))
 
     def test_merchant_table_is_paginated_and_searchable(self):
         superadmin = User.objects.create_superuser(

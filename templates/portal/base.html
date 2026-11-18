@@ -29,7 +29,7 @@
       <a href="{% url 'portal-api-playground' %}" class="{% if request.resolver_match.url_name == 'portal-api-playground' %}active{% endif %}"><span class="nav-icon">↳</span>API Playground</a>
       {% if user.role == 'ADMIN' or user.role == 'SUPERADMIN' or user.is_superuser %}
       <div class="workspace-label nav-section-label">MANAGEMENT</div>
-      <a href="{% url 'portal-managed-accounts' %}" class="{% if request.resolver_match.url_name == 'portal-managed-accounts' or request.resolver_match.url_name == 'portal-create-account' %}active{% endif %}"><span class="nav-icon">♙</span>Accounts</a>
+      <a href="{% url 'portal-managed-accounts' %}" class="{% if request.resolver_match.url_name == 'portal-managed-accounts' or request.resolver_match.url_name == 'portal-create-account' or request.resolver_match.url_name == 'portal-account-detail' %}active{% endif %}"><span class="nav-icon">♙</span>Accounts</a>
       {% endif %}
       <a href="{% url 'portal-profile-page' %}" class="{% if request.resolver_match.url_name == 'portal-profile-page' %}active{% endif %}"><span class="nav-icon">⚙</span>Profile & Password</a>
     </nav>
@@ -79,6 +79,24 @@
         <button class="button button-danger" type="button" data-accept-confirm>Confirm</button>
       </div>
     </div>
+  </dialog>
+  <dialog class="reset-password-dialog" id="reset-password-dialog" aria-labelledby="reset-dialog-title">
+    <form method="post" class="reset-dialog-form" data-confirm="Set a new temporary password for this account?">
+      {% csrf_token %}<input type="hidden" name="action" value="reset_password"><input type="hidden" name="user_id" id="reset-user-id">
+      <div class="panel-heading">
+        <div>
+          <h2 id="reset-dialog-title">Reset password</h2>
+          <p id="reset-dialog-copy">Set a temporary password for this account.</p>
+        </div>
+        <button class="dialog-close" type="button" data-close-reset aria-label="Close">×</button>
+      </div>
+      <div class="reset-dialog-content">
+        <label for="reset-password">Temporary password</label>
+        <input id="reset-password" class="form-control" type="password" name="password" minlength="8" maxlength="16" autocomplete="new-password" data-password-strength="true" required>
+        <div class="password-strength" data-strength-for="reset-password" aria-live="polite"><div class="strength-track"><span></span><span></span><span></span><span></span></div><span class="strength-label">8–16 characters <strong>Not entered</strong></span></div>
+      </div>
+      <div class="reset-dialog-actions"><button class="button button-soft" type="button" data-close-reset>Cancel</button><button class="button button-primary" type="submit">Set temporary password</button></div>
+    </form>
   </dialog>
   <script>
     const adminScopeSearch = document.querySelector('[data-admin-scope-search]');
@@ -274,6 +292,7 @@
       document.querySelectorAll('[data-open-reset]').forEach((button) => {
         button.addEventListener('click', () => {
           resetUserId.value = button.dataset.userId;
+          resetDialog.querySelector('form').action = button.dataset.resetUrl || window.location.pathname;
           resetCopy.textContent = `Set a temporary password for ${button.dataset.username}.`;
           resetPassword.value = '';
           resetDialog.showModal();
@@ -315,6 +334,222 @@
       };
       input.addEventListener('input', updateStrength);
       updateStrength();
+    });
+
+    document.querySelectorAll('[data-merchant-picker]').forEach((root) => {
+      const input = root.querySelector('[data-merchant-picker-search]');
+      const list = root.querySelector('[data-merchant-picker-options]');
+      const hidden = root.querySelector('[data-merchant-picker-input]');
+      const selectedBox = root.querySelector('[data-merchant-picker-selected]');
+      if (!input || !list || !hidden || !selectedBox) return;
+      const url = root.dataset.optionsUrl;
+      if (!url) return;
+      const userSelect = root.dataset.userSelect
+        ? document.querySelector(root.dataset.userSelect)
+        : null;
+      const fixedUserId = root.dataset.userId || '';
+      const currentUserId = () => (
+        userSelect && userSelect.value ? userSelect.value : fixedUserId
+      );
+      const pageSize = 10;
+      const selected = new Map();
+      let loading = false;
+      let pending = null;
+      let debounceTimer = null;
+      let offset = 0;
+      let hasMore = false;
+
+      const openList = () => {
+        list.hidden = false;
+        input.setAttribute('aria-expanded', 'true');
+      };
+      const closeList = () => {
+        list.hidden = true;
+        input.setAttribute('aria-expanded', 'false');
+      };
+      const setStatus = (message) => {
+        let status = list.querySelector('.merchant-picker-status');
+        if (!status) {
+          status = document.createElement('div');
+          status.className = 'merchant-picker-status';
+          list.prepend(status);
+        }
+        status.textContent = message;
+      };
+      const renderChips = () => {
+        selectedBox.innerHTML = '';
+        selected.forEach((merchant, id) => {
+          const chip = document.createElement('span');
+          chip.className = 'merchant-picker-chip';
+          const label = document.createElement('span');
+          label.textContent = `${merchant.name} · ${merchant.uid}`;
+          const remove = document.createElement('button');
+          remove.type = 'button';
+          remove.className = 'merchant-picker-chip-remove';
+          remove.setAttribute('aria-label', `Remove ${merchant.name}`);
+          remove.textContent = '×';
+          remove.addEventListener('click', () => {
+            selected.delete(id);
+            syncSelection();
+            refreshOptionStates();
+            input.focus();
+          });
+          chip.append(label, remove);
+          selectedBox.append(chip);
+        });
+      };
+      const syncSelection = () => {
+        hidden.value = Array.from(selected.keys()).join(',');
+        if (selected.size === 0) {
+          selectedBox.innerHTML = '<span class="merchant-picker-hint">No merchants selected yet — search above to add one or more.</span>';
+          input.setCustomValidity('Choose at least one merchant.');
+        } else {
+          renderChips();
+          input.setCustomValidity('');
+        }
+      };
+      const refreshOptionStates = () => {
+        list.querySelectorAll('[data-merchant-id]').forEach((button) => {
+          const id = button.dataset.merchantId;
+          const isSelected = selected.has(id);
+          const assigned = button.dataset.assigned === 'true';
+          button.classList.toggle('is-selected', isSelected);
+          button.disabled = !isSelected && assigned;
+          const text = isSelected
+            ? `${button.dataset.label} ✓ Added`
+            : assigned
+              ? `${button.dataset.label} — already assigned`
+              : button.dataset.label;
+          button.textContent = text;
+          button.setAttribute('aria-selected', String(isSelected));
+        });
+      };
+      const renderOptions = (data, append) => {
+        list.querySelectorAll('.merchant-picker-status, .merchant-picker-more').forEach((node) => node.remove());
+        if (!append) list.innerHTML = '';
+        data.results.forEach((item) => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'merchant-picker-option';
+          button.dataset.merchantId = String(item.id);
+          button.dataset.assigned = String(item.assigned);
+          button.dataset.label = `${item.name} · ${item.uid}`;
+          button.setAttribute('role', 'option');
+          button.addEventListener('click', () => {
+            const id = button.dataset.merchantId;
+            if (selected.has(id)) {
+              selected.delete(id);
+            } else {
+              if (button.dataset.assigned === 'true') return;
+              selected.set(id, { name: item.name, uid: item.uid });
+            }
+            syncSelection();
+            refreshOptionStates();
+          });
+          list.append(button);
+        });
+        offset = data.next_offset;
+        hasMore = data.has_more;
+        setStatus(data.total
+          ? `Showing ${offset} of ${data.total} merchants`
+          : 'No merchants match your search.');
+        refreshOptionStates();
+        if (hasMore) {
+          const more = document.createElement('button');
+          more.type = 'button';
+          more.className = 'merchant-picker-more';
+          more.textContent = `Load ${Math.min(pageSize, data.total - offset)} more`;
+          more.addEventListener('click', () => load({ append: true }));
+          list.append(more);
+        }
+      };
+      const load = async ({ append = false, init = false } = {}) => {
+        if (loading) {
+          pending = { append, init };
+          return;
+        }
+        loading = true;
+        const params = new URLSearchParams({ offset: append ? String(offset) : '0' });
+        const query = init ? '' : input.value.trim();
+        if (query) params.set('q', query);
+        if (currentUserId()) params.set('user_id', currentUserId());
+        setStatus('Loading merchants…');
+        try {
+          const response = await fetch(`${url}?${params.toString()}`, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+          });
+          if (!response.ok) throw new Error('Unable to load merchants');
+          renderOptions(await response.json(), append);
+        } catch (error) {
+          setStatus('Could not load merchants. Please try again.');
+        } finally {
+          loading = false;
+          if (pending) {
+            const next = pending;
+            pending = null;
+            load(next);
+          }
+        }
+      };
+
+      syncSelection();
+      load({ init: true });
+      input.addEventListener('focus', () => openList());
+      input.addEventListener('input', () => {
+        openList();
+        window.clearTimeout(debounceTimer);
+        debounceTimer = window.setTimeout(() => load(), 200);
+      });
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          closeList();
+          return;
+        }
+        if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          list.querySelector('.merchant-picker-option:not(:disabled)')?.focus();
+        }
+        if (event.key === 'Enter' && !list.hidden) {
+          const first = list.querySelector('.merchant-picker-option:not(:disabled)');
+          if (first && !first.matches(':focus')) {
+            event.preventDefault();
+            first.click();
+          }
+        }
+      });
+      list.addEventListener('keydown', (event) => {
+        const buttons = Array.from(list.querySelectorAll('.merchant-picker-option:not(:disabled)'));
+        const currentIndex = buttons.indexOf(document.activeElement);
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          event.preventDefault();
+          const direction = event.key === 'ArrowDown' ? 1 : -1;
+          buttons[(currentIndex + direction + buttons.length) % buttons.length]?.focus();
+        } else if (event.key === 'Escape') {
+          closeList();
+          input.focus();
+        } else if (event.key === 'Enter' && document.activeElement.classList.contains('merchant-picker-option')) {
+          event.preventDefault();
+          document.activeElement.click();
+        }
+      });
+      document.addEventListener('click', (event) => {
+        if (!root.contains(event.target)) closeList();
+      });
+      if (userSelect) {
+        userSelect.addEventListener('change', () => {
+          selected.clear();
+          syncSelection();
+          input.value = '';
+          load({ init: true });
+        });
+      }
+      root.closest('form')?.addEventListener('submit', (event) => {
+        if (selected.size === 0) {
+          input.setCustomValidity('Choose at least one merchant.');
+          input.reportValidity();
+          event.preventDefault();
+        }
+      });
     });
   </script>
 </body>

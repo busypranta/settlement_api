@@ -37,5 +37,6 @@ urlpatterns = [
     path('merchants/', web_views.merchant_access, name='portal-merchant-access'),
     path('accounts/', web_views.managed_accounts, name='portal-managed-accounts'),
     path('accounts/create/', web_views.create_account, name='portal-create-account'),
+    path('accounts/<int:user_id>/', web_views.account_detail, name='portal-account-detail'),
     path('profile/', web_views.profile, name='portal-profile-page'),
 ]

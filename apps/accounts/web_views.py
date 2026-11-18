@@ -5,7 +5,8 @@ from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
 from django.http import JsonResponse
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 
 from apps.api_logs.models import ApiLog
 from apps.audit.models import AuditLog
@@ -18,9 +19,11 @@ from apps.settlement_api.permissions import (
     merchant_access_ids,
 )
 from .forms import (
+    AccountEditForm,
     AdminPasswordResetForm,
     AdminUserAssignmentForm,
     MerchantAssignmentForm,
+    MerchantBulkAssignmentForm,
     MerchantCreateForm,
     MerchantEditForm,
     PortalPasswordChangeForm,
@@ -92,6 +95,32 @@ def audit_action(request, action, target=None, metadata=None):
         request_id=getattr(request, 'request_id', None),
         metadata=metadata or {},
     )
+
+
+def assign_merchants(request, account, merchants):
+    """Create any missing merchant grants and audit each new assignment."""
+    merchant_ids = [merchant.pk for merchant in merchants]
+    existing_ids = set(
+        UserMerchant.objects.filter(
+            user=account,
+            merchant_id__in=merchant_ids,
+        ).values_list('merchant_id', flat=True)
+    )
+    created_merchants = [
+        merchant for merchant in merchants if merchant.pk not in existing_ids
+    ]
+    if created_merchants:
+        assignments = [
+            UserMerchant(user=account, merchant=merchant, assigned_by=request.user)
+            for merchant in created_merchants
+        ]
+        UserMerchant.objects.bulk_create(assignments)
+        for assignment, merchant in zip(assignments, created_merchants):
+            audit_action(request, 'merchant.assigned', assignment, {
+                'user_id': account.pk,
+                'merchant_uid': merchant.merchant_uid,
+            })
+    return created_merchants
 
 
 @login_required
@@ -416,7 +445,7 @@ def managed_accounts(request):
     # Both assignment forms need the same role=USER options. Sharing one
     # queryset lets Django cache the results after the first evaluation.
     assignable_users = all_users.filter(role=User.ROLE_USER).order_by('username')
-    merchant_assignment_form = MerchantAssignmentForm(
+    merchant_assignment_form = MerchantBulkAssignmentForm(
         users=all_users,
         user_queryset=assignable_users,
         merchants=scoped_merchants(request.user),
@@ -505,7 +534,7 @@ def managed_accounts(request):
 
         elif action == 'assign_merchant':
             show_merchant_tools = is_superadmin
-            merchant_assignment_form = MerchantAssignmentForm(
+            merchant_assignment_form = MerchantBulkAssignmentForm(
                 request.POST,
                 users=all_users,
                 user_queryset=assignable_users,
@@ -513,20 +542,13 @@ def managed_accounts(request):
             )
             if merchant_assignment_form.is_valid():
                 account = merchant_assignment_form.cleaned_data['user']
-                merchant = merchant_assignment_form.cleaned_data['merchant']
-                assignment, created = UserMerchant.objects.get_or_create(
-                    user=account,
-                    merchant=merchant,
-                    defaults={'assigned_by': request.user},
-                )
+                assigned_merchants = merchant_assignment_form.cleaned_data['merchants']
+                created = assign_merchants(request, account, assigned_merchants)
                 if created:
-                    audit_action(request, 'merchant.assigned', assignment, {
-                        'user_id': account.pk,
-                        'merchant_uid': merchant.merchant_uid,
-                    })
-                    messages.success(request, f'{merchant.merchant_name} was assigned to {account.username}.')
+                    names = ', '.join(merchant.merchant_name for merchant in created)
+                    messages.success(request, f'Merchant access granted to {account.username}: {names}.')
                 else:
-                    messages.info(request, 'That merchant is already assigned to this account.')
+                    messages.info(request, 'Those merchants are already assigned to this account.')
                 return redirect('portal-managed-accounts')
 
         elif action == 'unassign_merchant':
@@ -605,6 +627,192 @@ def managed_accounts(request):
         'admin_assignments': explicit_assignments,
         'show_merchant_tools': show_merchant_tools,
         'can_manage_user': can_manage_user,
+        'merchant_options_url': reverse('portal-merchant-options'),
+    })
+
+
+@login_required
+def account_detail(request, user_id):
+    """Single-account workspace for editing details and managing access."""
+    if request.user.role not in (User.ROLE_ADMIN, User.ROLE_SUPERADMIN) and not request.user.is_superuser:
+        messages.error(request, 'Account administration is available to admins only.')
+        return redirect('portal-dashboard')
+
+    all_users = scoped_users(request.user)
+    account = get_object_or_404(all_users, pk=user_id)
+    is_superadmin = request.user.role == User.ROLE_SUPERADMIN or request.user.is_superuser
+    is_user = account.role == User.ROLE_USER
+    can_edit = can_manage_user(request.user, account)
+    detail_url = reverse('portal-account-detail', args=[account.pk])
+
+    assignable_users = all_users.filter(role=User.ROLE_USER).order_by('username')
+    merchant_queryset = scoped_merchants(request.user)
+    edit_form = AccountEditForm(instance=account, actor=request.user)
+    bulk_form = MerchantBulkAssignmentForm(
+        users=all_users,
+        user_queryset=assignable_users,
+        merchants=merchant_queryset,
+        fixed_user=account,
+    )
+    admin_form = (
+        AdminUserAssignmentForm(user_queryset=assignable_users, fixed_user=account)
+        if is_superadmin else None
+    )
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+
+        if action == 'edit_account':
+            edit_form = AccountEditForm(request.POST, instance=account, actor=request.user)
+            if not can_edit:
+                messages.error(request, 'That account is outside your management scope.')
+            elif edit_form.is_valid():
+                before_role = account.role
+                updated = edit_form.save()
+                audit_action(request, 'user.updated', updated, {
+                    'before_role': before_role,
+                    'after_role': updated.role,
+                })
+                messages.success(request, f'Account {updated.username} was updated.')
+                return redirect(detail_url)
+
+        elif action == 'toggle_user':
+            if not can_edit or account.role == User.ROLE_SUPERADMIN:
+                messages.error(request, 'That account cannot be changed here.')
+            else:
+                account.is_active = not account.is_active
+                account.save(update_fields=['is_active', 'updated_at'])
+                audit_action(
+                    request,
+                    'user.activated' if account.is_active else 'user.deactivated',
+                    account,
+                )
+                messages.success(request, f'{account.username} is now {"active" if account.is_active else "inactive"}.')
+                return redirect(detail_url)
+
+        elif action == 'reset_password':
+            if not can_edit or account.role == User.ROLE_SUPERADMIN:
+                messages.error(request, 'That account is outside your password-reset scope.')
+            else:
+                password_form = AdminPasswordResetForm(request.POST, user=account)
+                if password_form.is_valid():
+                    account.set_password(password_form.cleaned_data['password'])
+                    with transaction.atomic():
+                        account.save(update_fields=['password', 'updated_at'])
+                        revoke_user_refresh_tokens(account)
+                    audit_action(request, 'user.password_reset', account)
+                    messages.success(request, f'A new password was set for {account.username}.')
+                    return redirect(detail_url)
+                messages.error(request, 'Password was not changed. Use a stronger password and try again.')
+
+        elif action in ('toggle_multi_merchant_access', 'toggle_settlement_transactions') and is_user:
+            if not can_edit:
+                messages.error(request, 'That account is outside your management scope.')
+            else:
+                multi = action == 'toggle_multi_merchant_access'
+                field = 'allow_multiple_merchants' if multi else 'allow_settlement_transactions'
+                setattr(account, field, not getattr(account, field))
+                account.save(update_fields=[field, 'updated_at'])
+                audit_action(
+                    request,
+                    f'user.{"multiple_merchant_access" if multi else "settlement_transactions"}_'
+                    f'{"enabled" if getattr(account, field) else "disabled"}',
+                    account,
+                )
+                label = 'Multiple-merchant API access' if multi else 'Settlement transactions API access'
+                state = 'enabled' if getattr(account, field) else 'disabled'
+                messages.success(request, f'{label} is {state} for {account.username}.')
+                return redirect(detail_url)
+
+        elif action == 'assign_merchant':
+            bulk_form = MerchantBulkAssignmentForm(
+                request.POST,
+                users=all_users,
+                user_queryset=assignable_users,
+                merchants=merchant_queryset,
+                fixed_user=account,
+            )
+            if not can_edit:
+                messages.error(request, 'That account is outside your management scope.')
+            elif bulk_form.is_valid():
+                created = assign_merchants(request, account, bulk_form.cleaned_data['merchants'])
+                if created:
+                    names = ', '.join(merchant.merchant_name for merchant in created)
+                    messages.success(request, f'Merchant access granted: {names}.')
+                else:
+                    messages.info(request, 'Those merchants are already assigned to this account.')
+                return redirect(detail_url)
+
+        elif action == 'unassign_merchant':
+            assignment = UserMerchant.objects.select_related('merchant').filter(
+                pk=request.POST.get('assignment_id'),
+                user=account,
+            ).first()
+            if not can_edit or assignment is None:
+                messages.error(request, 'That assignment is outside your management scope.')
+            else:
+                audit_action(request, 'merchant.unassigned', assignment, {
+                    'user_id': account.pk,
+                    'merchant_uid': assignment.merchant.merchant_uid,
+                })
+                assignment.delete()
+                messages.success(request, f'{assignment.merchant.merchant_name} was removed from {account.username}.')
+                return redirect(detail_url)
+
+        elif action in ('assign_admin_user', 'unassign_admin_user') and is_superadmin:
+            admin_form = AdminUserAssignmentForm(
+                request.POST,
+                user_queryset=assignable_users,
+                fixed_user=account,
+            )
+            if admin_form.is_valid():
+                admin = admin_form.cleaned_data['admin']
+                user = admin_form.cleaned_data['user']
+                if action == 'assign_admin_user':
+                    assignment, created = AdminUserAssignment.objects.get_or_create(
+                        admin=admin,
+                        user=user,
+                        defaults={'assigned_by': request.user},
+                    )
+                    if created:
+                        audit_action(request, 'admin_user.assigned', assignment, {
+                            'admin_id': admin.pk,
+                            'user_id': user.pk,
+                        })
+                        messages.success(request, f'{user.username} was assigned to {admin.username}.')
+                    else:
+                        messages.info(request, 'That user is already assigned to this admin.')
+                else:
+                    assignment = AdminUserAssignment.objects.filter(admin=admin, user=user).first()
+                    if assignment:
+                        audit_action(request, 'admin_user.unassigned', assignment)
+                        assignment.delete()
+                        messages.success(request, f'{user.username} was removed from {admin.username}.')
+                    else:
+                        messages.info(request, 'That admin-user assignment does not exist.')
+                return redirect(detail_url)
+
+        else:
+            messages.error(request, 'Unknown account action.')
+
+    assigned_merchants = UserMerchant.objects.filter(
+        user=account,
+    ).select_related('merchant').order_by('merchant__merchant_name')
+    admin_assignments = (
+        AdminUserAssignment.objects.filter(user=account).select_related('admin').order_by('admin__username')
+        if is_superadmin else []
+    )
+    return render(request, 'portal/account_detail.html', {
+        'account': account,
+        'is_superadmin': is_superadmin,
+        'is_user': is_user,
+        'can_edit': can_edit,
+        'edit_form': edit_form,
+        'merchant_form': bulk_form,
+        'admin_form': admin_form,
+        'assigned_merchants': assigned_merchants,
+        'admin_assignments': admin_assignments,
+        'merchant_options_url': reverse('portal-merchant-options'),
     })
 
 

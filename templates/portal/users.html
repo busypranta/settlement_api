@@ -46,21 +46,28 @@
   </section>
   {% endif %}
   <section class="panel admin-form-panel">
-    <div class="panel-heading"><div><h2>Grant merchant access</h2></div><span class="stat-icon icon-teal">◈</span></div>
-    <form method="post" class="admin-form">
+    <div class="panel-heading"><div><h2>Grant merchant access</h2><p>Pick one or many merchants for an account in a single step.</p></div><span class="stat-icon icon-teal">◈</span></div>
+    <form method="post" class="admin-form merchant-picker-form">
       {% csrf_token %}<input type="hidden" name="action" value="assign_merchant">
       {{ merchant_assignment_form.non_field_errors }}
       {% for field in merchant_assignment_form %}
-      <div class="form-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<span class="field-error">{{ error }}</span>{% endfor %}</div>
+        {% if field.name == 'merchants' %}
+        <div class="form-field form-field-wide"><label>{{ field.label }}</label>
+          {% include "portal/includes/merchant_picker.html" with picker_id="global-merchant" options_url=merchant_options_url user_select="#id_user" input_name="merchants" %}
+          {% for error in field.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+        </div>
+        {% else %}
+        <div class="form-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% for error in field.errors %}<span class="field-error">{{ error }}</span>{% endfor %}</div>
+        {% endif %}
       {% endfor %}
-      <button class="button button-dark" type="submit">Grant Access <span>→</span></button>
+      <button class="button button-dark" type="submit">Grant access <span>→</span></button>
     </form>
   </section>
 </div>
 
 {% if is_superadmin %}
 <section class="panel assignment-admin-panel">
-  <div class="panel-heading"><div><h2>Assigned account access</h2></div><div class="admin-scope-controls"><label class="search-box"><span>⌕</span><input data-admin-scope-search type="search" placeholder="Search admins and users"></label><span class="scope-count">{{ admin_assignments|length }} assignment{{ admin_assignments|length|pluralize }}</span></div></div>
+  <div class="panel-heading"><div><span class="section-kicker">ADMIN SCOPE DIRECTORY</span><h2>Assigned account access</h2></div><div class="admin-scope-controls"><label class="search-box"><span>⌕</span><input data-admin-scope-search type="search" placeholder="Search admins and users"></label><span class="scope-count">{{ admin_assignments|length }} assignment{{ admin_assignments|length|pluralize }}</span></div></div>
   {% if admin_assignments %}
   <div class="assignment-directory">
     {% for assignment in admin_assignments %}
@@ -99,9 +106,6 @@
         <tr>
           <th>User</th>
           <th>Role</th>
-          <th>Merchants</th>
-          <th>Multiple-merchant</th>
-          <th>Transactions API</th>
           <th>Status</th>
           <th>Joined</th>
           <th>Manage</th>
@@ -110,37 +114,11 @@
       <tbody>
   {% for account in users %}
     <tr>
-      <td><div class="table-user"><span class="mini-avatar">{{ account.get_full_name|slice:":1"|upper }}</span><span><strong>{{ account.get_full_name }}</strong><small>{{ account.email|default:account.username }}{% if account.mobile %} · {{ account.mobile }}{% endif %}</small></span></div></td>
+      <td><div class="table-user"><span><strong>{{ account.get_full_name|default:account.username }}</strong><small>{{ account.email|default:account.username }}{% if account.mobile %} · {{ account.mobile }}{% endif %}</small></span></div></td>
       <td><span class="account-role-tag role-{{ account.role|lower }}">{{ account.get_role_display }}</span></td>
-      <td><div class="user-merchant-list">{% for assignment in account.usermerchant_set.all %}<span class="user-merchant-entry"><span class="assignment-chip">{{ assignment.merchant.merchant_name }}</span><code>{{ assignment.merchant.merchant_uid }}</code><form method="post" class="inline-form" data-confirm="Remove {{ assignment.merchant.merchant_name }} access from {{ account.username }}?">
-        {% csrf_token %}<input type="hidden" name="action" value="unassign_merchant"><input type="hidden" name="user_id" value="{{ account.id }}"><input type="hidden" name="assignment_id" value="{{ assignment.id }}">
-        <button class="remove-chip" type="submit" title="Remove merchant access" aria-label="Remove {{ assignment.merchant.merchant_name }}">×</button>
-      </form></span>{% empty %}<span class="table-secondary">No merchant access</span>{% endfor %}</div></td>
-      <td>{% if account.role == 'USER' %}
-        <form method="post" class="access-toggle-form" data-confirm="{% if account.allow_multiple_merchants %}Disable{% else %}Enable{% endif %} multi-merchant API access for {{ account.username }}?">
-          {% csrf_token %}<input type="hidden" name="action" value="toggle_multi_merchant_access"><input type="hidden" name="user_id" value="{{ account.id }}">
-          <button class="access-toggle {% if account.allow_multiple_merchants %}enabled{% endif %}" type="submit" aria-label="{% if account.allow_multiple_merchants %}Disable{% else %}Enable{% endif %} multi-merchant API access for {{ account.username }}">
-            {% if account.allow_multiple_merchants %}Enabled{% else %}Disabled{% endif %}
-          </button>
-        </form>
-      {% else %}<span class="table-secondary">Not applicable</span>{% endif %}</td>
-      <td>{% if account.role == 'USER' %}
-        <form method="post" class="access-toggle-form" data-confirm="{% if account.allow_settlement_transactions %}Disable{% else %}Enable{% endif %} settlement transactions API access for {{ account.username }}?">
-          {% csrf_token %}<input type="hidden" name="action" value="toggle_settlement_transactions"><input type="hidden" name="user_id" value="{{ account.id }}">
-          <button class="access-toggle {% if account.allow_settlement_transactions %}enabled{% endif %}" type="submit" aria-label="{% if account.allow_settlement_transactions %}Disable{% else %}Enable{% endif %} settlement transactions API access for {{ account.username }}">
-            {% if account.allow_settlement_transactions %}Enabled{% else %}Disabled{% endif %}
-          </button>
-        </form>
-      {% else %}<span class="table-secondary">Not applicable</span>{% endif %}</td>
       <td><span class="status-pill {% if account.is_active %}status-ok{% else %}status-muted{% endif %}"><i></i>{% if account.is_active %}Active{% else %}Inactive{% endif %}</span></td>
       <td class="table-secondary">{{ account.date_joined|date:"M j, Y" }}</td>
-      <td><div class="account-actions">{% if account.role != 'SUPERADMIN' %}
-        <form method="post" data-confirm="{% if account.is_active %}Deactivate{% else %}Activate{% endif %} {{ account.username }}?">
-          {% csrf_token %}<input type="hidden" name="action" value="toggle_user"><input type="hidden" name="user_id" value="{{ account.id }}">
-          <button class="button button-small {% if account.is_active %}button-danger{% else %}button-soft{% endif %}" type="submit">{% if account.is_active %}Deactivate{% else %}Activate{% endif %}</button>
-        </form>
-        <button class="button button-small button-soft" type="button" data-open-reset data-user-id="{{ account.id }}" data-username="{{ account.username }}">Reset password</button>
-      {% else %}<span class="table-secondary">Protected</span>{% endif %}</div></td>
+      <td><a class="button button-small button-soft manage-account-button" href="{% url 'portal-account-detail' account.id %}">Manage <span>→</span></a></td>
     </tr>
   {% endfor %}
   </tbody></table></div>
@@ -155,22 +133,4 @@
   <div class="empty-state"><strong>No accounts match these filters</strong><p>Adjust your search or filters, or create a new account.</p><a class="button button-primary" href="{% url 'portal-create-account' %}">Create an account <span>→</span></a></div>
   {% endif %}
 </section>
-<dialog class="reset-password-dialog" id="reset-password-dialog" aria-labelledby="reset-dialog-title">
-  <form method="post" class="reset-dialog-form" data-confirm="Set a new temporary password for this account?">
-    {% csrf_token %}<input type="hidden" name="action" value="reset_password"><input type="hidden" name="user_id" id="reset-user-id">
-    <div class="panel-heading">
-      <div>
-        <h2 id="reset-dialog-title">Reset password</h2>
-        <p id="reset-dialog-copy">Set a temporary password for this account.</p>
-      </div>
-      <button class="dialog-close" type="button" data-close-reset aria-label="Close">×</button>
-    </div>
-    <div class="reset-dialog-content">
-      <label for="reset-password">Temporary password</label>
-      <input id="reset-password" class="form-control" type="password" name="password" minlength="8" maxlength="16" autocomplete="new-password" data-password-strength="true" required>
-      <div class="password-strength" data-strength-for="reset-password" aria-live="polite"><div class="strength-track"><span></span><span></span><span></span><span></span></div><span class="strength-label">8–16 characters <strong>Not entered</strong></span></div>      
-    </div>
-    <div class="reset-dialog-actions"><button class="button button-soft" type="button" data-close-reset>Cancel</button><button class="button button-primary" type="submit">Set temporary password</button></div>
-  </form>
-</dialog>
 {% endblock %}
