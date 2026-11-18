@@ -172,3 +172,9 @@ X_FRAME_OPTIONS = 'DENY'
 LOGIN_URL = 'portal-login'
 LOGIN_REDIRECT_URL = 'portal-dashboard'
 LOGOUT_REDIRECT_URL = 'portal-login'
+
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+
+# Expire idle sessions after 30 minutes (1800 seconds)
+# SESSION_COOKIE_AGE = 1800
+# SESSION_SAVE_EVERY_REQUEST = True 

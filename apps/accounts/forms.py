@@ -116,11 +116,49 @@ class MerchantCreateForm(forms.ModelForm):
             field.widget.attrs.setdefault('class', 'form-control')
 
 
+class MerchantEditForm(forms.ModelForm):
+    class Meta:
+        model = PortalMerchant
+        fields = ('merchant_name', 'merchant_uid')
+        labels = {
+            'merchant_name': 'Merchant name',
+            'merchant_uid': 'Merchant UID',
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs.setdefault('class', 'form-control')
+        self.fields['merchant_uid'].help_text = 'Changing the UID changes the identifier used in API URLs.'
+
+    def clean_merchant_name(self):
+        name = ' '.join(self.cleaned_data['merchant_name'].split())
+        if len(name) < 2:
+            raise forms.ValidationError('Name must be at least 2 characters long.')
+        duplicates = PortalMerchant.objects.filter(merchant_name_key=name.casefold())
+        if self.instance.pk:
+            duplicates = duplicates.exclude(pk=self.instance.pk)
+        if duplicates.exists():
+            raise forms.ValidationError('Another merchant already uses this name.')
+        return name
+
+    def clean_merchant_uid(self):
+        uid = self.cleaned_data['merchant_uid'].strip()
+        if not uid:
+            raise forms.ValidationError('Merchant UID is required.')
+        duplicates = PortalMerchant.objects.filter(merchant_uid=uid)
+        if self.instance.pk:
+            duplicates = duplicates.exclude(pk=self.instance.pk)
+        if duplicates.exists():
+            raise forms.ValidationError('Another merchant already uses this UID.')
+        return uid
+
+
 class MerchantAssignmentForm(forms.Form):
     user = forms.ModelChoiceField(queryset=User.objects.none(), label='Account')
     merchant = forms.ModelChoiceField(queryset=PortalMerchant.objects.none(), label='Merchant')
 
-    def __init__(self, *args, users, merchants=None, **kwargs):
+    def __init__(self, *args, users, merchants=None, lazy_merchant=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['user'].queryset = users.filter(role=User.ROLE_USER).order_by('username')
         merchant_queryset = merchants if merchants is not None else PortalMerchant.objects.all()
@@ -129,10 +167,16 @@ class MerchantAssignmentForm(forms.Form):
             'class': 'form-control',
             'data-searchable-select': 'true',
         })
-        self.fields['merchant'].widget.attrs.update({
-            'class': 'form-control',
-            'data-searchable-select': 'true',
-        })
+        if lazy_merchant:
+            self.fields['merchant'].widget = forms.HiddenInput()
+            self.fields['merchant'].widget.attrs.update({
+                'data-lazy-merchant-input': 'true',
+            })
+        else:
+            self.fields['merchant'].widget.attrs.update({
+                'class': 'form-control',
+                'data-searchable-select': 'true',
+            })
 
 
 class AdminUserAssignmentForm(forms.Form):

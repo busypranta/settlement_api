@@ -4,6 +4,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
 from django.db.models import Q
+from django.http import JsonResponse
 from django.shortcuts import redirect, render
 
 from apps.api_logs.models import ApiLog
@@ -21,6 +22,7 @@ from .forms import (
     AdminUserAssignmentForm,
     MerchantAssignmentForm,
     MerchantCreateForm,
+    MerchantEditForm,
     PortalPasswordChangeForm,
     ProfileForm,
     UserCreateForm,
@@ -133,15 +135,79 @@ def api_playground(request):
     })
 
 @login_required
+def merchant_options(request):
+    """Session-authenticated merchant options for the grant-access dropdown."""
+    is_admin = request.user.role in (User.ROLE_ADMIN, User.ROLE_SUPERADMIN) or request.user.is_superuser
+    if not is_admin:
+        return JsonResponse({'error': 'Not allowed.'}, status=403)
+
+    query = request.GET.get('q', '').strip()[:100]
+    merchant_id = request.GET.get('id', '').strip()
+    try:
+        offset = max(0, int(request.GET.get('offset', 0)))
+    except (TypeError, ValueError):
+        offset = 0
+    page_size = 10
+
+    merchants = scoped_merchants(request.user).filter(is_active=True)
+    if merchant_id.isdigit():
+        merchants = merchants.filter(pk=merchant_id)
+    elif query:
+        merchants = merchants.filter(
+            Q(merchant_name__icontains=query) | Q(merchant_uid__icontains=query),
+        )
+    merchants = merchants.order_by('merchant_name').distinct()
+    total = merchants.count()
+
+    assigned_ids = set()
+    user_id = request.GET.get('user_id', '').strip()
+    if user_id.isdigit():
+        account = User.objects.filter(pk=user_id, role=User.ROLE_USER).first()
+        if account is not None and can_manage_user(request.user, account):
+            assigned_ids = set(
+                UserMerchant.objects.filter(user=account).values_list('merchant_id', flat=True),
+            )
+
+    rows = list(merchants[offset:offset + page_size])
+    results = [
+        {
+            'id': merchant.pk,
+            'name': merchant.merchant_name,
+            'uid': merchant.merchant_uid,
+            'assigned': merchant.pk in assigned_ids,
+        }
+        for merchant in rows
+    ]
+    next_offset = offset + len(results)
+    return JsonResponse({
+        'results': results,
+        'total': total,
+        'next_offset': next_offset,
+        'has_more': next_offset < total,
+        'page_size': page_size,
+    })
+
+
+@login_required
 def merchant_access(request):
     merchants = scoped_merchants(request.user).order_by('merchant_name')
     if request.user.role == User.ROLE_USER:
         merchants = merchants.filter(usermerchant__user=request.user)
     is_admin = request.user.role in (User.ROLE_ADMIN, User.ROLE_SUPERADMIN) or request.user.is_superuser
+    query = request.GET.get('q', '').strip()[:100]
+    if query:
+        merchants = merchants.filter(
+            Q(merchant_name__icontains=query) | Q(merchant_uid__icontains=query),
+        )
+    merchants = merchants.distinct()
+
     merchant_form = MerchantCreateForm()
+    edit_merchant_form = MerchantEditForm()
+    edit_merchant_open = False
     assignment_form = MerchantAssignmentForm(
         users=scoped_users(request.user),
         merchants=scoped_merchants(request.user),
+        lazy_merchant=True,
     )
     if request.method == 'POST':
         action = request.POST.get('action')
@@ -169,6 +235,7 @@ def merchant_access(request):
                 request.POST,
                 users=scoped_users(request.user),
                 merchants=scoped_merchants(request.user),
+                lazy_merchant=True,
             )
             if assignment_form.is_valid():
                 account = assignment_form.cleaned_data['user']
@@ -191,6 +258,36 @@ def merchant_access(request):
                         messages.info(request, 'That merchant is already assigned to this account.')
                     return redirect('portal-merchant-access')
 
+        elif action == 'edit_merchant':
+            merchant = PortalMerchant.objects.filter(pk=request.POST.get('merchant_id')).first()
+            if merchant is None:
+                messages.error(request, 'Merchant not found.')
+            elif not can_manage_merchant(request.user, merchant):
+                messages.error(request, 'You cannot edit this merchant because it is outside your scope.')
+            else:
+                before = {
+                    'merchant_name': merchant.merchant_name,
+                    'merchant_uid': merchant.merchant_uid,
+                }
+                edit_merchant_form = MerchantEditForm(request.POST, instance=merchant)
+                if edit_merchant_form.is_valid():
+                    try:
+                        with transaction.atomic():
+                            updated = edit_merchant_form.save()
+                    except IntegrityError:
+                        edit_merchant_form.add_error(None, 'That merchant UID or normalized name is already registered.')
+                    else:
+                        audit_action(request, 'merchant.updated', updated, {
+                            'before': before,
+                            'after': {
+                                'merchant_name': updated.merchant_name,
+                                'merchant_uid': updated.merchant_uid,
+                            },
+                        })
+                        messages.success(request, f'{updated.merchant_name} was updated.')
+                        return redirect('portal-merchant-access')
+                edit_merchant_open = True
+
         elif action == 'toggle_merchant':
             merchant = PortalMerchant.objects.filter(pk=request.POST.get('merchant_id')).first()
             if merchant is None:
@@ -206,13 +303,19 @@ def merchant_access(request):
         else:
             messages.error(request, 'Unknown merchant action.')
 
-    merchant_rows = list(merchants.distinct())
+    page_obj = Paginator(merchants, 25).get_page(request.GET.get('page'))
+    merchant_rows = list(page_obj.object_list)
     manageable_ids = manageable_merchant_ids(request.user, merchant_rows)
     return render(request, 'portal/merchants.html', {
         'merchants': merchant_rows,
+        'page_obj': page_obj,
+        'query': query,
         'is_admin': is_admin,
         'merchant_form': merchant_form,
+        'edit_merchant_form': edit_merchant_form,
+        'edit_merchant_open': edit_merchant_open,
         'assignment_form': assignment_form,
+        'lazy_merchant_select': True,
         'manageable_merchant_ids': manageable_ids,
     })
 

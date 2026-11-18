@@ -517,6 +517,30 @@ td { padding: 16px 18px; font-size: 13px; }
 .searchable-select-option:hover, .searchable-select-option:focus, .searchable-select-option[aria-selected="true"] { outline: 0; color: #087c67; background: #edf8f3; }
 .searchable-select-option[hidden] { display: none; }
 .searchable-select select[data-searchable-select] { position: absolute; width: 1px; height: 1px; padding: 0; border: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+.merchant-directory-controls { display: flex; align-items: center; gap: 9px; }
+.merchant-directory-controls .search-box { min-width: 260px; }
+.merchant-directory-controls .button { min-height: 42px; }
+.merchant-actions { display: grid; gap: 8px; min-width: 110px; }
+.merchant-actions form { margin: 0; }
+.merchant-actions .button-small { justify-content: center; min-height: 34px; }
+.lazy-merchant-select { position: relative; }
+.lazy-merchant-search { width: 100%; min-height: 42px; padding-right: 12px; }
+.lazy-merchant-options { position: absolute; z-index: 25; top: calc(100% + 4px); left: 0; right: 0; max-height: 240px; overflow-y: auto; padding: 5px; border: 1px solid #dfe7e2; border-radius: 9px; background: #fff; box-shadow: 0 12px 28px #17223b20; }
+.lazy-merchant-options[hidden] { display: none; }
+.lazy-merchant-option { display: block; width: 100%; padding: 9px 10px; border: 0; border-radius: 6px; color: #35443c; background: #fff; text-align: left; font-size: 12px; cursor: pointer; }
+.lazy-merchant-option:hover:not(:disabled), .lazy-merchant-option:focus:not(:disabled) { outline: 0; color: #087c67; background: #edf8f3; }
+.lazy-merchant-option:disabled { color: #9aa59e; background: #f6f8f7; cursor: not-allowed; }
+.lazy-merchant-more { display: block; width: 100%; margin-top: 4px; padding: 8px; border: 1px solid #e2ebe5; border-radius: 6px; color: #087c67; background: #f4faf7; font-size: 11px; font-weight: 700; cursor: pointer; }
+.lazy-merchant-status { padding: 6px 10px 8px; color: #7d8981; font-size: 11px; }
+.merchant-edit-dialog { width: min(520px, calc(100% - 32px)); max-width: none; padding: 0; border: 1px solid #e1e9e4; border-radius: 14px; color: var(--ink); background: #fff; box-shadow: 0 24px 80px #10203e38; }
+.merchant-edit-dialog::backdrop { background: #101b3580; backdrop-filter: blur(3px); }
+.merchant-edit-form .panel-heading { min-height: 88px; border-bottom: 1px solid #edf1ee; }
+.merchant-edit-form .panel-heading h2 { margin: 0; color: #24372d; font-size: 18px; }
+.merchant-edit-form .panel-heading p { color: #7d8981; font-size: 12px; }
+.merchant-edit-content { display: grid; gap: 12px; padding: 22px 24px; }
+.merchant-edit-content .form-field { margin: 0; }
+.merchant-edit-content .form-field label { margin-bottom: 5px; font-size: 12px; }
+.merchant-edit-actions { display: flex; justify-content: flex-end; gap: 9px; padding: 15px 24px; border-top: 1px solid #edf1ee; background: #fbfcfb; }
 .confirm-action-dialog { width: min(460px, calc(100% - 32px)); max-width: none; padding: 0; border: 1px solid #e1e9e4; border-radius: 14px; color: var(--ink); background: #fff; box-shadow: 0 24px 80px #10203e38; }
 .confirm-action-dialog::backdrop { background: #101b3580; backdrop-filter: blur(3px); }
 .confirm-action-content .panel-heading { min-height: 100px; border-bottom: 1px solid #edf1ee; }
@@ -562,6 +586,9 @@ td { padding: 16px 18px; font-size: 13px; }
   .admin-scope-controls { align-items: stretch; flex-direction: column; }
   .admin-scope-controls .search-box { width: 100%; }
   .admin-scope-controls .search-box input { width: 100%; }
+  .merchant-directory-controls { align-items: stretch; flex-direction: column; }
+  .merchant-directory-controls .search-box { width: 100%; }
+  .merchant-directory-controls .search-box input { width: 100%; }
   .account-role-filter { width: 100%; }
   .account-overview-grid { gap: 9px; }
   .create-account-form { grid-template-columns: minmax(0, 1fr); padding: 17px; }
