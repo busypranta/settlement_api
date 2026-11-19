@@ -9,25 +9,6 @@
   <a class="button button-primary" href="{% url 'portal-create-account' %}">Create an account <span>→</span></a>
 </div>
 
-<div class="stat-grid">
-  <article class="stat-card">
-    <div class="stat-top"><span>Total accounts</span><span class="stat-icon icon-violet">♙</span></div>
-    <strong>{{ account_count }}</strong><div class="stat-caption"><span>Within your scope</span></div>
-  </article>
-  <article class="stat-card">
-    <div class="stat-top"><span>Admins</span><span class="stat-icon icon-teal">◈</span></div>
-    <strong>{{ admin_count }}</strong><div class="stat-caption"><span>Can manage accounts</span></div>
-  </article>
-  <article class="stat-card">
-    <div class="stat-top"><span>Users</span><span class="stat-icon icon-blue">≋</span></div>
-    <strong>{{ user_count }}</strong><div class="stat-caption"><span>API access accounts</span></div>
-  </article>
-  <article class="stat-card">
-    <div class="stat-top"><span>Inactive</span><span class="stat-icon icon-amber">!</span></div>
-    <strong>{{ inactive_count }}</strong><div class="stat-caption"><span>Currently disabled</span></div>
-  </article>
-</div>
-
 <div class="admin-tools-grid {% if not is_superadmin %}single-admin-tool{% endif %}">
   {% if is_superadmin %}
   <section class="panel admin-form-panel">
@@ -46,7 +27,7 @@
   </section>
   {% endif %}
   <section class="panel admin-form-panel">
-    <div class="panel-heading"><div><h2>Grant merchant access</h2><p>Pick one or many merchants for an account in a single step.</p></div><span class="stat-icon icon-teal">◈</span></div>
+    <div class="panel-heading"><div><h2>Grant merchant access</h2></div><span class="stat-icon icon-teal">◈</span></div>
     <form method="post" class="admin-form merchant-picker-form">
       {% csrf_token %}<input type="hidden" name="action" value="assign_merchant">
       {{ merchant_assignment_form.non_field_errors }}
@@ -67,7 +48,7 @@
 
 {% if is_superadmin %}
 <section class="panel assignment-admin-panel">
-  <div class="panel-heading"><div><span class="section-kicker">ADMIN SCOPE DIRECTORY</span><h2>Assigned account access</h2></div><div class="admin-scope-controls"><label class="search-box"><span>⌕</span><input data-admin-scope-search type="search" placeholder="Search admins and users"></label><span class="scope-count">{{ admin_assignments|length }} assignment{{ admin_assignments|length|pluralize }}</span></div></div>
+  <div class="panel-heading"><div><h2>Assigned account access</h2></div><div class="admin-scope-controls"><label class="search-box"><span>⌕</span><input data-admin-scope-search type="search" placeholder="Search admins and users"></label><span class="scope-count">{{ admin_assignments|length }} assignment{{ admin_assignments|length|pluralize }}</span></div></div>
   {% if admin_assignments %}
   <div class="assignment-directory">
     {% for assignment in admin_assignments %}
@@ -84,7 +65,7 @@
     {% endfor %}
   </div>
   {% else %}
-  <div class="assignment-empty"><strong>No explicit admin scopes</strong><span>Accounts created by an admin remain visible to that admin automatically.</span></div>
+  <div class="assignment-empty"><strong>No explicit admin scopes</strong></div>
   {% endif %}
 </section>
 {% endif %}

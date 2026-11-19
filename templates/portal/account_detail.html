@@ -4,15 +4,7 @@
 {% block content %}
 <div class="page-heading heading-with-action account-detail-heading">
   <div>
-    <span class="section-kicker">ACCOUNT WORKSPACE</span>
-    <h1>{{ account.get_full_name|default:account.username }}</h1>
-    <p class="account-detail-subtitle">
-      <span class="account-detail-username">@{{ account.username }}</span>
-      <span class="account-detail-sep">·</span>
-      <span>{{ account.get_role_display }}</span>
-      {% if account.email %}<span class="account-detail-sep">·</span><span>{{ account.email }}</span>{% endif %}
-      {% if account.mobile %}<span class="account-detail-sep">·</span><span>{{ account.mobile }}</span>{% endif %}
-    </p>
+    <h1>User Details</h1>
   </div>
   <div class="heading-actions">
     <span class="status-pill account-status-pill {% if account.is_active %}status-ok{% else %}status-muted{% endif %}"><i></i>{% if account.is_active %}Active{% else %}Inactive{% endif %}</span>
@@ -20,8 +12,7 @@
   </div>
 </div>
 
-<div class="detail-summary-grid">
-  <article class="detail-summary-item"><span>Role</span><strong>{{ account.get_role_display }}</strong></article>
+<div class="detail-summary-grid">  
   <article class="detail-summary-item"><span>Last sign-in</span><strong>{% if account.last_login %}{{ account.last_login|date:"M j, Y · H:i" }}{% else %}<span class="text-muted">Never</span>{% endif %}</strong></article>
   <article class="detail-summary-item"><span>Joined</span><strong>{{ account.date_joined|date:"M j, Y" }}</strong></article>
   {% if account.created_by %}<article class="detail-summary-item"><span>Created by</span><strong>{{ account.created_by.get_full_name|default:account.created_by.username }}</strong></article>{% endif %}
@@ -32,15 +23,11 @@
   <section class="panel detail-panel">
     <div class="panel-heading"><div><h2>Account details</h2></div><span class="stat-icon icon-teal">✎</span></div>
     <form method="post" class="detail-form" data-account-edit-form>
-      {% csrf_token %}<input type="hidden" name="action" value="edit_account">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="edit_account">
       {% if edit_form.non_field_errors %}
       <div class="form-errors" role="alert">{{ edit_form.non_field_errors }}</div>
       {% endif %}
-      {% if 'role' in edit_form.fields %}<input type="hidden" name="role" value="{{ edit_form.role.value|default:account.role }}">{% endif %}
-      <div class="form-field">
-        <label for="id_account_username">Username</label>
-        <input type="text" id="id_account_username" class="form-control detail-locked" value="{{ account.username }}" disabled readonly data-always-locked>
-      </div>
       {% for field in edit_form %}
       <div class="form-field">
         <label for="{{ field.id_for_label }}">{{ field.label }}</label>
@@ -54,7 +41,7 @@
         <button class="button button-primary" type="submit" data-update-account hidden>Save changes <span>→</span></button>
         <button class="button button-soft" type="button" data-cancel-edit hidden>Cancel</button>
         {% else %}
-        <p class="detail-inline-note">You can view this account, but you don’t have permission to change it.</p>
+        <p class="detail-inline-note">You can view this account, but you don't have permission to change it.</p>
         {% endif %}
       </div>
     </form>
@@ -68,12 +55,12 @@
         <div><strong>{% if account.is_active %}Deactivate account{% else %}Activate account{% endif %}</strong><span>{% if account.is_active %}Block this account from signing in and using the API.{% else %}Restore sign-in and API access for this account.{% endif %}</span></div>
         <form method="post" data-confirm="{% if account.is_active %}Deactivate{% else %}Activate{% endif %} {{ account.username }}? This will {% if account.is_active %}prevent{% else %}allow{% endif %} sign-in.">
           {% csrf_token %}<input type="hidden" name="action" value="toggle_user">
-          <button class="button button-small {% if account.is_active %}button-danger{% else %}button-soft{% endif %}" type="submit">{% if account.is_active %}Deactivate{% else %}Activate{% endif %}</button>
+          <button class="button button-small {% if account.is_active %}button-danger{% else %}button-soft{% endif %}" type="submit">{% if account.is_active %}Disable{% else %}Enable{% endif %}</button>
         </form>
       </div>
       <div class="detail-control">
         <div><strong>Reset password</strong><span>Set a new temporary password and revoke active refresh tokens.</span></div>
-        <button class="button button-small button-soft" type="button" data-open-reset data-user-id="{{ account.id }}" data-username="{{ account.username }}" data-reset-url="{% url 'portal-account-detail' account.id %}">Reset password</button>
+        <button class="button button-small button-soft" type="button" data-open-reset data-user-id="{{ account.id }}" data-username="{{ account.username }}" data-reset-url="{% url 'portal-account-detail' account.id %}">Reset</button>
       </div>
       {% elif account.role == 'SUPERADMIN' %}
       <div class="detail-control-note">Super administrator accounts cannot be deactivated or reset from this workspace.</div>
@@ -104,10 +91,6 @@
         <span class="status-pill {% if account.allow_settlement_transactions %}status-ok{% else %}status-muted{% endif %}"><i></i>{% if account.allow_settlement_transactions %}Enabled{% else %}Disabled{% endif %}</span>
         {% endif %}
       </div>
-      {% endif %}
-
-      {% if not is_user %}
-      <div class="detail-control-note">API capability toggles apply to user accounts. Administrative accounts use role-based permissions.</div>
       {% endif %}
     </div>
   </section>
@@ -142,7 +125,6 @@
   <div class="detail-subsection">
     <div class="detail-subsection-heading">
       <h3>Grant merchant access</h3>
-      <p>Search and select one or more merchants to assign in a single action.</p>
     </div>
     {% if can_edit %}
     <form method="post" class="detail-merchant-form">
@@ -152,7 +134,6 @@
       {% for field in merchant_form %}
         {% if field.name == 'merchants' %}
         <div class="form-field form-field-wide">
-          <label for="detail-merchant-search">Search merchants</label>
           {% include "portal/includes/merchant_picker.html" with picker_id="detail-merchant" options_url=merchant_options_url user_id=account.pk input_name="merchants" %}
           {% for error in field.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
         </div>
@@ -198,7 +179,7 @@
     {% endfor %}
   </div>
   {% else %}
-  <div class="assignment-empty"><strong>No explicit admin assignment</strong><span>Accounts created by an admin remain in that admin's scope automatically.</span></div>
+  <div class="assignment-empty"><strong>No explicit admin assignment</strong></div>
   {% endif %}
 </section>
 {% endif %}

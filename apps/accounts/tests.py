@@ -755,7 +755,6 @@ class PortalVisibilityTests(TestCase):
         self.assertContains(directory_response, 'All portal accounts')
         self.assertContains(directory_response, 'Assign users to an admin')
         self.assertContains(directory_response, 'name="status"')
-        self.assertContains(directory_response, 'ADMIN SCOPE DIRECTORY')
         self.assertContains(directory_response, 'account-role-filter')
 
         response = self.client.post(reverse('portal-managed-accounts'), {
@@ -1216,4 +1215,3 @@ class PortalVisibilityTests(TestCase):
         self.assertEqual(response.context['page_obj'].paginator.count, expected_total)
         self.assertEqual(response.context['account_count'], expected_total)
         self.assertEqual(response.context['user_count'], expected_users)
-        self.assertContains(response, 'Total accounts')

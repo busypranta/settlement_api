@@ -106,11 +106,11 @@ class AdminPasswordResetForm(forms.Form):
 
 
 class AccountEditForm(forms.ModelForm):
-    """Admin form for editing an existing account's contact details and role."""
+    """Admin form for editing an existing account's contact details."""
 
     class Meta:
         model = User
-        fields = ('name', 'email', 'mobile', 'role')
+        fields = ('name', 'email', 'mobile')
         widgets = {
             'name': forms.TextInput(attrs={'autocomplete': 'name', 'minlength': '2', 'maxlength': '100'}),
             'mobile': forms.TelInput(attrs={'autocomplete': 'tel', 'inputmode': 'tel', 'maxlength': '16'}),
@@ -119,13 +119,6 @@ class AccountEditForm(forms.ModelForm):
 
     def __init__(self, *args, actor, **kwargs):
         super().__init__(*args, **kwargs)
-        if actor.role == User.ROLE_SUPERADMIN or actor.is_superuser:
-            self.fields['role'].choices = (
-                (User.ROLE_USER, 'User'),
-                (User.ROLE_ADMIN, 'Admin'),
-            )
-        else:
-            self.fields['role'].choices = ((User.ROLE_USER, 'User'),)
         if self.instance.pk and self.instance.role == User.ROLE_SUPERADMIN:
             self.fields.pop('role', None)
         for field in self.fields.values():

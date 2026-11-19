@@ -433,7 +433,7 @@
           button.className = 'merchant-picker-option';
           button.dataset.merchantId = String(item.id);
           button.dataset.assigned = String(item.assigned);
-          button.dataset.label = `${item.name} · ${item.uid}`;
+          button.dataset.label = `${item.name}`;
           button.setAttribute('role', 'option');
           button.addEventListener('click', () => {
             const id = button.dataset.merchantId;
