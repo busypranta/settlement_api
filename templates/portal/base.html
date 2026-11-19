@@ -427,15 +427,22 @@
       const syncSelection = () => {
         hidden.value = Array.from(selected.keys()).join(',');
         if (count) count.textContent = `${selected.size} selected`;
+        if (singleSelect) {
+          const selectedMerchant = selected.size ? Array.from(selected.values())[0] : null;
+          input.value = selectedMerchant ? selectedMerchant.label : '';
+          input.setAttribute('aria-label', selectedMerchant
+            ? `Selected merchant: ${selectedMerchant.name}`
+            : 'Search merchants by name or UID');
+        }
         if (selected.size === 0) {
           selectedBox.replaceChildren();
           const hint = document.createElement('span');
           hint.className = 'merchant-picker-hint';
           hint.textContent = singleSelect
-            ? 'No merchant selected yet — search above to add one.'
+            ? 'No merchant selected yet.'
             : isLocal
-              ? 'No merchants selected yet — choose one or more below.'
-              : 'No merchants selected yet — search above to add one or more.';
+              ? 'No merchants selected yet'
+              : 'No merchants selected yet';
           selectedBox.append(hint);
           if (required) input.setCustomValidity(validationMessage);
         } else {
@@ -468,7 +475,6 @@
           if (singleSelect) {
             selected.clear();
             selected.set(value, merchantFromOption(option));
-            input.value = '';
             closeList();
           } else if (selected.has(value)) {
             selected.delete(value);
@@ -604,7 +610,16 @@
       } else {
         load({ init: true });
       }
-      input.addEventListener('focus', openList);
+      input.addEventListener('focus', () => {
+        if (singleSelect && selected.size && input.value) input.select();
+        openList();
+      });
+      input.addEventListener('blur', () => {
+        if (!singleSelect) return;
+        const selectedMerchant = selected.size ? Array.from(selected.values())[0] : null;
+        const selectedLabel = selectedMerchant ? selectedMerchant.label : '';
+        if (input.value !== selectedLabel) input.value = selectedLabel;
+      });
       input.addEventListener('input', () => {
         if (isLocal) {
           applyLocalSearch();

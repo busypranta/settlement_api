@@ -235,6 +235,7 @@ th { padding: 15px 18px; font-size: 13px; letter-spacing: .7px; }
 .playground-response { min-width: 0; }
 .playground-form { padding: 0px 24px 25px; }
 .playground-form-row { display: flex; gap: 1rem; }
+.playground-form-row > .form-field { flex: 1 1 0; min-width: 0; }
 .playground-form .form-control { width: 100%; min-height: 45px; border: 1px solid #dfe6e1; padding: 10px 12px; background: var(--panel); color: #26382f; font-size: 14px; }
 .playground-form select[multiple] { min-height: 142px; padding: 8px; }
 .playground-form option { padding: 7px; }
@@ -683,6 +684,9 @@ body { font-size: 16px; }
   .merchant-picker-actions button { padding-inline: 5px; font-size: 13px; }
   .merchant-picker-status { line-height: 1.5; }
 }
+.merchant-picker-single { display: block; padding: 0; border: 0; background: transparent; }
+.merchant-picker-single .merchant-picker-help,
+.merchant-picker-single .merchant-picker-selection { display: none; }
 /* Account detail workspace */
 .account-detail-heading .heading-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 .account-status-pill { font-size: 12px; padding: 7px 12px; }

@@ -2,7 +2,7 @@
   {% if help_text %}<p class="merchant-picker-help">{{ help_text }}</p>{% endif %}
   <div class="merchant-picker-search-wrap">
     <span class="merchant-picker-search-icon" aria-hidden="true">⌕</span>
-    <input id="{{ picker_id }}-search" class="form-control merchant-picker-search" data-merchant-picker-search type="search" placeholder="{{ search_placeholder|default:'Search merchants by name or UID' }}" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="{% if local_merchants %}true{% else %}false{% endif %}" aria-controls="{{ picker_id }}-options">
+    <input id="{{ picker_id }}-search" class="form-control merchant-picker-search" data-merchant-picker-search type="search" placeholder="{{ search_placeholder|default:'Search merchants by name or UID' }}" role="combobox" aria-autocomplete="list" aria-expanded="{% if local_merchants %}true{% else %}false{% endif %}" aria-controls="{{ picker_id }}-options" aria-activedescendant="" aria-label="Search merchants" autocomplete="one-time-code" />
   </div>
   {% if local_merchants or show_bulk_actions %}
     <div class="merchant-picker-toolbar">
@@ -12,11 +12,11 @@
       </div>
     </div>
   {% endif %}
-  <input type="hidden" id="{{ picker_id }}-input" name="{{ input_name|default:'merchants' }}" value="" data-merchant-picker-input>
+  <input type="hidden" id="{{ picker_id }}-input" name="{{ input_name|default:'merchants' }}" value="" data-merchant-picker-input autocomplete="one-time-code">
   <div class="merchant-picker-options" data-merchant-picker-options id="{{ picker_id }}-options" role="listbox" aria-live="polite"{% if not local_merchants %} hidden{% endif %}>
     {% for merchant in local_merchants %}
       <button type="button" class="merchant-picker-option" role="option" aria-selected="false" data-merchant-option data-merchant-id="{{ merchant.pk }}" data-merchant-value="{{ merchant.merchant_uid }}" data-merchant-name="{{ merchant.merchant_name }}" data-merchant-uid="{{ merchant.merchant_uid }}" data-label="{{ merchant.merchant_name }} · {{ merchant.merchant_uid }}" data-assigned="false">
-        <span class="merchant-picker-copy"><strong>{{ merchant.merchant_name }}</strong><small>{{ merchant.merchant_uid }}</small></span>
+        <span class="merchant-picker-copy"><strong>{{ merchant.merchant_name }}</strong></span>
       </button>
     {% endfor %}
   </div>
@@ -27,7 +27,7 @@
   <div class="merchant-picker-selection">
     {% if local_merchants %}<strong id="{{ picker_id }}-selection-count" data-merchant-picker-count aria-live="polite">0 selected</strong>{% endif %}
     <div class="merchant-picker-selected" data-merchant-picker-selected aria-live="polite">
-      <span class="merchant-picker-hint">No merchants selected yet — search above to add one or more.</span>
+      <span class="merchant-picker-hint">No merchants selected yet.</span>
     </div>
   </div>
 </div>

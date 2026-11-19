@@ -45,8 +45,9 @@ All paths are under the `/portal/` include in `config/urls.py`; names are from `
   Remote mode uses `data-options-url` (admin assignment and the lazy playground picker); local
   mode passes `local_merchants`. Pass `show_bulk_actions=True` for Select All/Clear and
   `optional_selection=True` when the picker is not a required form field. Pass
-  `single_select=True` for a one-merchant combobox and `value_field="uid"` when the caller needs
-  merchant UIDs instead of primary keys. Shared JS lives in `base.html` under
+  `single_select=True` for a compact one-merchant combobox and `value_field="uid"` when the caller
+  needs merchant UIDs instead of primary keys. Single mode shows the chosen merchant in the search
+  input itself. Shared JS lives in `base.html` under
   `[data-merchant-picker]` and CSS under `/* Shared multi-merchant picker */` in `portal.css`.
 
 ## CSS maintenance
