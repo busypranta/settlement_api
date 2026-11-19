@@ -1,11 +1,33 @@
-<div class="merchant-picker" data-merchant-picker data-options-url="{{ options_url }}"{% if user_select %} data-user-select="{{ user_select }}"{% endif %}{% if user_id %} data-user-id="{{ user_id }}"{% endif %}>
+<div class="merchant-picker{% if local_merchants %} merchant-picker-local{% endif %}{% if single_select %} merchant-picker-single{% endif %}" data-merchant-picker data-merchant-picker-mode="{% if local_merchants %}local{% else %}remote{% endif %}"{% if options_url %} data-options-url="{{ options_url }}"{% endif %}{% if optional_selection %} data-merchant-picker-optional="true"{% endif %}{% if single_select %} data-merchant-picker-single="true"{% endif %} data-merchant-picker-value-field="{{ value_field|default:'id' }}"{% if user_select %} data-user-select="{{ user_select }}"{% endif %}{% if user_id %} data-user-id="{{ user_id }}"{% endif %}>
+  {% if help_text %}<p class="merchant-picker-help">{{ help_text }}</p>{% endif %}
   <div class="merchant-picker-search-wrap">
     <span class="merchant-picker-search-icon" aria-hidden="true">⌕</span>
-    <input id="{{ picker_id }}-search" class="form-control merchant-picker-search" data-merchant-picker-search type="search" placeholder="Search merchants by name or UID" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="{{ picker_id }}-options">
+    <input id="{{ picker_id }}-search" class="form-control merchant-picker-search" data-merchant-picker-search type="search" placeholder="{{ search_placeholder|default:'Search merchants by name or UID' }}" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="{% if local_merchants %}true{% else %}false{% endif %}" aria-controls="{{ picker_id }}-options">
   </div>
-  <input type="hidden" name="{{ input_name|default:'merchants' }}" value="" data-merchant-picker-input>
-  <div class="merchant-picker-options" data-merchant-picker-options id="{{ picker_id }}-options" role="listbox" aria-live="polite" hidden></div>
-  <div class="merchant-picker-selected" data-merchant-picker-selected aria-live="polite">
-    <span class="merchant-picker-hint"></span>
+  {% if local_merchants or show_bulk_actions %}
+    <div class="merchant-picker-toolbar">
+      <div class="merchant-picker-actions">
+        <button type="button" data-merchant-select="all">Select All</button>
+        <button type="button" data-merchant-select="none">Clear</button>
+      </div>
+    </div>
+  {% endif %}
+  <input type="hidden" id="{{ picker_id }}-input" name="{{ input_name|default:'merchants' }}" value="" data-merchant-picker-input>
+  <div class="merchant-picker-options" data-merchant-picker-options id="{{ picker_id }}-options" role="listbox" aria-live="polite"{% if not local_merchants %} hidden{% endif %}>
+    {% for merchant in local_merchants %}
+      <button type="button" class="merchant-picker-option" role="option" aria-selected="false" data-merchant-option data-merchant-id="{{ merchant.pk }}" data-merchant-value="{{ merchant.merchant_uid }}" data-merchant-name="{{ merchant.merchant_name }}" data-merchant-uid="{{ merchant.merchant_uid }}" data-label="{{ merchant.merchant_name }} · {{ merchant.merchant_uid }}" data-assigned="false">
+        <span class="merchant-picker-copy"><strong>{{ merchant.merchant_name }}</strong><small>{{ merchant.merchant_uid }}</small></span>
+      </button>
+    {% endfor %}
+  </div>
+  {% if local_merchants %}
+    <div class="merchant-picker-status" id="merchant-visible-count" data-merchant-picker-status></div>
+    <p class="merchant-picker-status merchant-picker-empty" id="merchant-picker-empty" data-merchant-picker-empty hidden>No merchants match that search.</p>
+  {% endif %}
+  <div class="merchant-picker-selection">
+    {% if local_merchants %}<strong id="{{ picker_id }}-selection-count" data-merchant-picker-count aria-live="polite">0 selected</strong>{% endif %}
+    <div class="merchant-picker-selected" data-merchant-picker-selected aria-live="polite">
+      <span class="merchant-picker-hint">No merchants selected yet — search above to add one or more.</span>
+    </div>
   </div>
 </div>

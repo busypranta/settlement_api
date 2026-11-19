@@ -10,7 +10,10 @@
     <div>
       <h1>{% if is_admin %}Merchant management{% else %}Your merchants{% endif %}</h1>
     </div>
-    <div class="heading-actions"><span class="role-chip">{{ user.get_role_display }}</span></div>
+    <div class="heading-actions">
+      {% if can_sync_merchants %}<a class="button button-dark" href="{% url 'portal-merchant-sync' %}">Sync merchants <span>↻</span></a>{% endif %}
+      <span class="role-chip">{{ user.get_role_display }}</span>
+    </div>
   </div>
 
   {% if is_admin %}

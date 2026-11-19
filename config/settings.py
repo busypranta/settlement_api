@@ -163,6 +163,10 @@ SPECTACULAR_SETTINGS = {
 
 MAINTENANCE_MODE = env.bool('MAINTENANCE_MODE', default=False)
 SOURCE_SCHEMA = env('SOURCE_SCHEMA', default='JPAY_RECON')
+
+# Merchant sync reads UID/name pairs from SOURCE_SCHEMA."merchants" in batches.
+MERCHANT_SYNC_BATCH_SIZE = env.int('MERCHANT_SYNC_BATCH_SIZE', default=200)
+
 CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=[])
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 # TLS may be terminated by an upstream proxy/WAF that forwards plain HTTP to

@@ -2,14 +2,16 @@ import json
 from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from django.db import connection
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from apps.api_logs.models import ApiLog
+from apps.audit.models import AuditLog
+from apps.accounts import merchant_sync as sync_service
 from apps.accounts.models import User
 from apps.merchants.models import AdminUserAssignment, PortalMerchant, UserMerchant
 from django.contrib.auth.password_validation import validate_password
@@ -462,17 +464,51 @@ class PortalVisibilityTests(TestCase):
     def test_playground_lists_only_merchants_the_user_can_access(self):
         self.client.force_login(self.user)
         playground = self.client.get(reverse('portal-api-playground'))
-        self.assertContains(playground, 'Test an API call')
-        self.assertContains(playground, self.merchant.merchant_uid)
+        self.assertContains(playground, 'Request setup')
         self.assertNotContains(playground, self.other_merchant.merchant_uid)
         self.assertContains(playground, '/api/v1/auth/token/')
         self.assertNotContains(playground, '<option value="transactions">Transactions</option>')
         self.assertContains(playground, 'merchant-picker-search')
-        self.assertContains(playground, 'merchant-picker-option')
         self.assertContains(playground, 'merchant-picker-selection')
-        self.assertContains(playground, 'merchant-visible-count')
+        self.assertContains(playground, reverse('portal-playground-merchant-options'))
+        self.assertContains(playground, 'data-merchant-picker-optional="true"')
+        self.assertContains(playground, 'data-merchant-picker-single="true"')
+        self.assertContains(playground, 'data-merchant-picker-value-field="uid"')
+        self.assertContains(playground, 'id="playground-single-input"')
+        self.assertNotContains(playground, 'merchant-picker-local')
+        self.assertNotContains(playground, 'merchant-visible-count')
         self.assertNotContains(playground, 'merchant-picker-trigger')
-        self.assertNotContains(playground, '<select id="playground-merchants"')
+        self.assertNotContains(playground, '<select id="playground-merchant"')
+
+    def test_playground_merchant_options_are_lazy_searchable_and_scoped(self):
+        self.client.force_login(self.user)
+        url = reverse('portal-playground-merchant-options')
+
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['page_size'], 10)
+        self.assertEqual(data['total'], 1)
+        self.assertFalse(data['has_more'])
+        self.assertEqual([item['uid'] for item in data['results']], [self.merchant.merchant_uid])
+        self.assertFalse(data['results'][0]['assigned'])
+
+        by_name = self.client.get(url, {'q': 'Visible'}).json()
+        self.assertEqual([item['uid'] for item in by_name['results']], [self.merchant.merchant_uid])
+        by_uid = self.client.get(url, {'q': 'merchant-visible'}).json()
+        self.assertEqual([item['uid'] for item in by_uid['results']], [self.merchant.merchant_uid])
+        excluded = self.client.get(url, {'q': 'Hidden'}).json()
+        self.assertEqual(excluded['results'], [])
+        self.assertEqual(excluded['total'], 0)
+
+        paged = self.client.get(url, {'offset': 1}).json()
+        self.assertEqual(paged['results'], [])
+        self.assertEqual(paged['next_offset'], 1)
+
+    def test_playground_merchant_options_require_login(self):
+        response = self.client.get(reverse('portal-playground-merchant-options'))
+        self.assertEqual(response.status_code, 302)
 
     def test_playground_shows_transactions_only_when_enabled_for_user(self):
         self.client.force_login(self.user)
@@ -1215,3 +1251,159 @@ class PortalVisibilityTests(TestCase):
         self.assertEqual(response.context['page_obj'].paginator.count, expected_total)
         self.assertEqual(response.context['account_count'], expected_total)
         self.assertEqual(response.context['user_count'], expected_users)
+
+
+class MerchantSyncTests(TestCase):
+    def setUp(self):
+        self.superadmin = User.objects.create_user(
+            username='sync-superadmin',
+            password='SyncPassword!9284',
+            role=User.ROLE_SUPERADMIN,
+        )
+        self.admin = User.objects.create_user(
+            username='sync-admin',
+            password='SyncPassword!9284',
+            role=User.ROLE_ADMIN,
+        )
+        self.existing = PortalMerchant.objects.create(
+            merchant_uid='uid-existing',
+            merchant_name='Existing Merchant',
+        )
+        self.url = reverse('portal-merchant-sync')
+
+    def test_sync_link_is_only_shown_to_superadmins(self):
+        self.client.force_login(self.superadmin)
+        page = self.client.get(reverse('portal-merchant-access'))
+        self.assertContains(page, self.url)
+
+        self.client.force_login(self.admin)
+        page = self.client.get(reverse('portal-merchant-access'))
+        self.assertNotContains(page, self.url)
+
+    def test_admin_cannot_open_sync_page(self):
+        self.client.force_login(self.admin)
+        response = self.client.get(self.url)
+        self.assertRedirects(
+            response,
+            reverse('portal-merchant-access'),
+            fetch_redirect_response=False,
+        )
+
+    @patch('apps.accounts.web_views.sync_service.fetch_database_rows')
+    def test_sync_button_previews_first_batch(self, fetch_rows):
+        fetch_rows.return_value = ([
+            {'uid': 'uid-new', 'name': 'New DB Merchant'},
+            {'uid': 'uid-existing', 'name': 'Renamed DB Merchant'},
+        ], 0, 2)
+        self.client.force_login(self.superadmin)
+
+        response = self.client.post(self.url, {'action': 'fetch_database'})
+        self.assertRedirects(response, self.url, fetch_redirect_response=False)
+        page = self.client.get(self.url)
+
+        fetch_rows.assert_called_once_with(offset=0)
+        self.assertContains(page, 'New DB Merchant')
+        self.assertContains(page, 'uid-new')
+        self.assertContains(page, 'Renamed DB Merchant')
+        self.assertContains(page, 'Current: Existing Merchant')
+        preview = self.client.session[sync_service.SESSION_KEY]
+        self.assertEqual(preview['source'], 'database')
+        self.assertEqual(preview['offset'], 0)
+        self.assertEqual(preview['next_offset'], 2)
+        self.assertEqual((preview['create_count'], preview['update_count']), (1, 1))
+
+    @patch('apps.accounts.web_views.sync_service.fetch_database_rows')
+    def test_next_click_uses_saved_offset(self, fetch_rows):
+        fetch_rows.return_value = ([], 0, 0)
+        session = self.client.session
+        session[sync_service.OFFSET_KEY] = 200
+        session.save()
+        self.client.force_login(self.superadmin)
+
+        self.client.post(self.url, {'action': 'fetch_database'})
+
+        fetch_rows.assert_called_once_with(offset=200)
+        self.assertNotIn(sync_service.SESSION_KEY, self.client.session)
+
+    @override_settings(MERCHANT_SYNC_BATCH_SIZE=2)
+    def test_fetch_database_rows_only_reads_one_batch(self):
+        queryset = MagicMock()
+        queryset.order_by.return_value = queryset
+        queryset.__getitem__.return_value = [
+            {'uid': 'uid-1', 'name': 'Merchant One'},
+            {'uid': 'uid-2', 'name': 'Merchant Two'},
+        ]
+        with patch.object(sync_service.SourceMerchant.objects, 'values', return_value=queryset):
+            rows, skipped, fetched = sync_service.fetch_database_rows(offset=5)
+
+        queryset.__getitem__.assert_called_once_with(slice(5, 7))
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(skipped, 0)
+        self.assertEqual(fetched, 2)
+
+    def test_rows_without_uid_are_skipped(self):
+        rows, skipped = sync_service.normalize_source_rows([
+            {'uid': '', 'name': 'No UID'},
+            {'uid': 'uid-a', 'name': 'First Name'},
+            {'uid': 'uid-a', 'name': 'Duplicate UID'},
+            {'uid': 'uid-b', 'name': 'first name'},
+        ])
+        self.assertEqual(rows, [{'uid': 'uid-a', 'name': 'First Name'}])
+        self.assertEqual(skipped, 3)
+
+    def test_apply_one_updates_only_the_selected_row(self):
+        self.client.force_login(self.superadmin)
+        preview = sync_service.build_preview([
+            {'uid': 'uid-existing', 'name': 'Renamed Merchant'},
+            {'uid': 'uid-new', 'name': 'Brand New Merchant'},
+        ], offset=0, next_offset=2)
+        session = self.client.session
+        session[sync_service.SESSION_KEY] = preview
+        session.save()
+        update_key = next(
+            item['key'] for item in preview['items'] if item['action'] == 'update'
+        )
+
+        response = self.client.post(self.url, {
+            'action': 'apply_one',
+            'row_key': update_key,
+        })
+        self.assertRedirects(response, self.url, fetch_redirect_response=False)
+        self.existing.refresh_from_db()
+        self.assertEqual(self.existing.merchant_name, 'Renamed Merchant')
+        self.assertFalse(PortalMerchant.objects.filter(merchant_uid='uid-new').exists())
+        remaining = self.client.session[sync_service.SESSION_KEY]
+        self.assertEqual([item['key'] for item in remaining['items']], ['row-1'])
+        self.assertNotIn(sync_service.OFFSET_KEY, self.client.session)
+        self.assertTrue(AuditLog.objects.filter(action='merchant.updated').exists())
+
+    def test_apply_all_creates_updates_and_advances_offset(self):
+        self.client.force_login(self.superadmin)
+        preview = sync_service.build_preview([
+            {'uid': 'uid-existing', 'name': 'Updated In Bulk'},
+            {'uid': 'uid-created', 'name': 'Created In Bulk'},
+        ], offset=0, next_offset=200)
+        session = self.client.session
+        session[sync_service.SESSION_KEY] = preview
+        session.save()
+
+        response = self.client.post(self.url, {'action': 'apply_all'})
+        self.assertRedirects(response, self.url, fetch_redirect_response=False)
+        self.existing.refresh_from_db()
+        self.assertEqual(self.existing.merchant_name, 'Updated In Bulk')
+        created = PortalMerchant.objects.get(merchant_uid='uid-created')
+        self.assertEqual(created.merchant_name, 'Created In Bulk')
+        self.assertEqual(created.created_by, self.superadmin)
+        self.assertNotIn(sync_service.SESSION_KEY, self.client.session)
+        self.assertEqual(self.client.session[sync_service.OFFSET_KEY], 200)
+        self.assertTrue(AuditLog.objects.filter(action='merchant.created').exists())
+
+    def test_start_over_resets_the_batch_offset(self):
+        session = self.client.session
+        session[sync_service.OFFSET_KEY] = 400
+        session.save()
+        self.client.force_login(self.superadmin)
+
+        self.client.post(self.url, {'action': 'reset_offset'})
+
+        self.assertEqual(self.client.session[sync_service.OFFSET_KEY], 0)

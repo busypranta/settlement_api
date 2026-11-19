@@ -1,0 +1,98 @@
+{% extends 'portal/base.html' %}
+{% block title %}Sync merchants{% endblock %}
+{% block breadcrumb %}Merchants / Sync{% endblock %}
+{% block content %}
+<div class="page-heading heading-with-action">
+  <div>
+    <h1>Sync merchants</h1>
+    <p>Read merchant UID and name from the source database in batches of {{ batch_size }}. Existing merchants keep their UID and get only their name updated.</p>
+  </div>
+  <div class="heading-actions"><a class="button button-soft" href="{% url 'portal-merchant-access' %}">Back to merchants <span>←</span></a></div>
+</div>
+
+<section class="panel admin-form-panel sync-source-panel">
+  <div class="panel-heading">
+    <div><h2>Sync from source database</h2><p>Reads <code>{{ source_schema }}</code>.<code>merchants</code> — UID and name only.</p></div>
+    <span class="stat-icon icon-teal">◈</span>
+  </div>
+  <form method="post" class="sync-source-form">
+    {% csrf_token %}<input type="hidden" name="action" value="fetch_database">
+    <p class="sync-source-status">Each button press reads up to {{ batch_size }} rows, starting at row {{ offset|add:1 }}. Rows without a UID are skipped.</p>
+    <div class="sync-source-actions">
+      <button class="button button-primary" type="submit">Sync next {{ batch_size }} from database <span>↻</span></button>
+    </div>
+  </form>
+  <form method="post" class="sync-source-reset">
+    {% csrf_token %}<input type="hidden" name="action" value="reset_offset">
+    <button class="button button-soft button-small" type="submit">Start over</button>
+  </form>
+</section>
+
+{% if preview %}
+<section class="panel sync-preview-panel">
+  <div class="panel-heading">
+    <div>
+      <h2>Review changes</h2>
+      <p>{{ preview.source_label }} · rows {{ preview.offset|add:1 }}–{{ preview.next_offset }} · {{ preview.total_count }} pending</p>
+    </div>
+    <div class="heading-actions">
+      <form method="post" data-confirm="Create {{ preview.create_count }} and update {{ preview.update_count }} merchant(s)?">
+        {% csrf_token %}<input type="hidden" name="action" value="apply_all">
+        <button class="button button-primary" type="submit">Apply all ({{ preview.total_count }}) <span>→</span></button>
+      </form>
+      <form method="post">
+        {% csrf_token %}<input type="hidden" name="action" value="clear_preview">
+        <button class="button button-soft" type="submit">Clear preview</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="admin-tools-grid sync-review-grid">
+    <div class="sync-review-block">
+      <div class="sync-review-heading"><h3>New merchants</h3><span class="scope-count">{{ preview.create_count }}</span></div>
+      {% for item in preview.items %}
+        {% if item.action == 'create' %}
+        <div class="sync-row{% if item.error %} sync-row-error{% endif %}">
+          <div class="sync-row-main">
+            <strong>{{ item.name }}</strong>
+            <code>{{ item.uid }}</code>
+            {% if item.error %}<span class="field-error">{{ item.error }}</span>{% endif %}
+          </div>
+          <form method="post" class="sync-row-actions">
+            {% csrf_token %}<input type="hidden" name="action" value="apply_one"><input type="hidden" name="row_key" value="{{ item.key }}">
+            <button class="button button-small button-dark" type="submit" {% if item.error %}disabled{% endif %}>Create</button>
+          </form>
+        </div>
+        {% endif %}
+      {% endfor %}
+      {% if not preview.create_count %}<p class="sync-review-empty">No new merchants in this batch.</p>{% endif %}
+    </div>
+
+    <div class="sync-review-block">
+      <div class="sync-review-heading"><h3>Name updates</h3><span class="scope-count">{{ preview.update_count }}</span></div>
+      {% for item in preview.items %}
+        {% if item.action == 'update' %}
+        <div class="sync-row{% if item.error %} sync-row-error{% endif %}">
+          <div class="sync-row-main">
+            <strong>{{ item.name }}</strong>
+            <code>{{ item.uid }}</code>
+            <span class="sync-current">Current: {{ item.current_name }}</span>
+            {% if item.error %}<span class="field-error">{{ item.error }}</span>{% endif %}
+          </div>
+          <form method="post" class="sync-row-actions">
+            {% csrf_token %}<input type="hidden" name="action" value="apply_one"><input type="hidden" name="row_key" value="{{ item.key }}">
+            <button class="button button-small button-dark" type="submit" {% if item.error %}disabled{% endif %}>Update</button>
+          </form>
+        </div>
+        {% endif %}
+      {% endfor %}
+      {% if not preview.update_count %}<p class="sync-review-empty">No merchant names to update in this batch.</p>{% endif %}
+    </div>
+  </div>
+</section>
+{% else %}
+<section class="panel sync-empty">
+  <div class="panel-heading"><div><h2>No preview yet</h2><p>Click “Sync next {{ batch_size }} from database” to load a batch for review.</p></div></div>
+</section>
+{% endif %}
+{% endblock %}

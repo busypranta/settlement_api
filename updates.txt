@@ -1,0 +1,42 @@
+Suggested scope for future updates
+==================================
+
+1. Test baseline
+   - Fix the 1 error and 4 pre-existing failures in `apps.accounts.tests`
+     (date-range validation, sign-in validation, profile validation, and account
+     detail actions).
+   - Make static assets test-safe: `config.test_settings` currently uses
+     `CompressedManifestStaticFilesStorage`, so tests fail unless
+     `collectstatic` has been run. Use plain `StaticFilesStorage` in tests or
+     add a `collectstatic` step to the test command.
+   - Replace SQLite-incompatible unmanaged `JPAY_RECON.*` models in tests with
+     fixtures/mocks so the suite runs without Oracle/JPA connectivity.
+
+2. Portal CSS / UI consistency
+   - Keep using the single `templates/portal/includes/merchant_picker.html`
+     component for the playground and admin assignment pickers; new pickers should
+     use the remote lazy-loading mode.
+   - Continue moving any remaining inline styles into `static/portal/portal.css`
+     and prefer the documented `:root` tokens over repeated hex values.
+
+3. Accessibility and interaction polish
+   - Audit native `<dialog>` usage, focus management, and `aria-*` attributes
+     on the searchable select, merchant pickers, and confirmation dialog.
+   - Ensure all interactive elements have visible focus states and keyboard
+     paths, especially the searchable select and merchant option lists.
+   - Review responsive breakpoints (420/520/760/1000/1100px) against real
+     screens; consolidate where rules overlap.
+
+4. Merchant sync follow-up
+   - Make the source-database sync scheduled/automatic instead of relying on a
+     superadmin to click through each 200-row batch.
+   - Add a "sync status" summary (last batch, rows scanned, conflicts skipped)
+     so operators can see progress across sessions.
+   - Optionally let a superadmin download the pending preview as CSV before
+     applying it.
+
+5. Maintainability
+   - Add a small CSS usage check to CI that flags selectors not referenced in
+     templates/JS, so dead styles do not accumulate again.
+   - Keep the URL/view/template map and CSS maintenance rules in AGENTS.md up
+     to date as new portal pages and styles are added.

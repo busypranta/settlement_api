@@ -28,7 +28,7 @@
         <img src="{% static 'images/jpay.webp' %}" alt="JanataPay" class="login-card-logo" />
       </div>
       {% if form.errors %}
-        <div class="form-alert" role="alert" style="margin-bottom: 15px;"><span aria-hidden="true">⚠</span> Please check your username and password.</div>
+        <div class="form-alert" role="alert"><span aria-hidden="true">⚠</span> Please check your username and password.</div>
       {% endif %}
       <form method="post" class="login-form">
         {% csrf_token %}

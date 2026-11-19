@@ -77,6 +77,7 @@ class Merchant(models.Model):
         primary_key=True,
     )
     name = models.CharField(max_length=150)
+    uid = models.CharField(max_length=15, unique=True)
     is_active = models.BooleanField(default=True)
 
     class Meta:

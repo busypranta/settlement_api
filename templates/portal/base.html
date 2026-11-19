@@ -341,9 +341,18 @@
       const list = root.querySelector('[data-merchant-picker-options]');
       const hidden = root.querySelector('[data-merchant-picker-input]');
       const selectedBox = root.querySelector('[data-merchant-picker-selected]');
+      const count = root.querySelector('[data-merchant-picker-count]');
+      const empty = root.querySelector('[data-merchant-picker-empty]');
       if (!input || !list || !hidden || !selectedBox) return;
+      const isLocal = root.dataset.merchantPickerMode === 'local';
+      const required = root.dataset.merchantPickerOptional !== 'true';
+      const singleSelect = root.dataset.merchantPickerSingle === 'true';
+      const valueField = root.dataset.merchantPickerValueField === 'uid' ? 'uid' : 'id';
+      const validationMessage = singleSelect
+        ? 'Choose a merchant.'
+        : 'Choose at least one merchant.';
       const url = root.dataset.optionsUrl;
-      if (!url) return;
+      if (!isLocal && !url) return;
       const userSelect = root.dataset.userSelect
         ? document.querySelector(root.dataset.userSelect)
         : null;
@@ -353,43 +362,60 @@
       );
       const pageSize = 10;
       const selected = new Map();
+      const localOptions = isLocal
+        ? Array.from(list.querySelectorAll('[data-merchant-id]'))
+        : [];
+      let statusNode = root.querySelector('[data-merchant-picker-status]');
       let loading = false;
       let pending = null;
       let debounceTimer = null;
       let offset = 0;
       let hasMore = false;
-
+      let selectAllActive = false;
       const openList = () => {
+        if (isLocal) return;
         list.hidden = false;
         input.setAttribute('aria-expanded', 'true');
       };
       const closeList = () => {
+        if (isLocal) return;
         list.hidden = true;
         input.setAttribute('aria-expanded', 'false');
       };
       const setStatus = (message) => {
-        let status = list.querySelector('.merchant-picker-status');
-        if (!status) {
-          status = document.createElement('div');
-          status.className = 'merchant-picker-status';
-          list.prepend(status);
+        if (!statusNode) {
+          statusNode = document.createElement('div');
+          statusNode.className = 'merchant-picker-status';
+          list.prepend(statusNode);
         }
-        status.textContent = message;
+        statusNode.textContent = message;
       };
+      const merchantFromOption = (option) => ({
+        name: option.dataset.merchantName || '',
+        uid: option.dataset.merchantUid || '',
+        label: option.dataset.label || `${option.dataset.merchantName || ''} · ${option.dataset.merchantUid || ''}`,
+      });
+      const valueFromOption = (option) => (
+        valueField === 'uid'
+          ? (option.dataset.merchantUid || option.dataset.merchantValue || option.dataset.merchantId)
+          : (option.dataset.merchantValue || option.dataset.merchantId)
+      );
       const renderChips = () => {
-        selectedBox.innerHTML = '';
-        selected.forEach((merchant, id) => {
+        selectedBox.replaceChildren();
+        selected.forEach((merchant, value) => {
           const chip = document.createElement('span');
           chip.className = 'merchant-picker-chip';
           const label = document.createElement('span');
-          label.textContent = `${merchant.name} · ${merchant.uid}`;
+          label.textContent = merchant.label;
           const remove = document.createElement('button');
           remove.type = 'button';
           remove.className = 'merchant-picker-chip-remove';
+          remove.dataset.removeMerchant = value;
           remove.setAttribute('aria-label', `Remove ${merchant.name}`);
           remove.textContent = '×';
           remove.addEventListener('click', () => {
-            selected.delete(id);
+            selectAllActive = false;
+            selected.delete(value);
             syncSelection();
             refreshOptionStates();
             input.focus();
@@ -400,48 +426,116 @@
       };
       const syncSelection = () => {
         hidden.value = Array.from(selected.keys()).join(',');
+        if (count) count.textContent = `${selected.size} selected`;
         if (selected.size === 0) {
-          selectedBox.innerHTML = '<span class="merchant-picker-hint">No merchants selected yet — search above to add one or more.</span>';
-          input.setCustomValidity('Choose at least one merchant.');
+          selectedBox.replaceChildren();
+          const hint = document.createElement('span');
+          hint.className = 'merchant-picker-hint';
+          hint.textContent = singleSelect
+            ? 'No merchant selected yet — search above to add one.'
+            : isLocal
+              ? 'No merchants selected yet — choose one or more below.'
+              : 'No merchants selected yet — search above to add one or more.';
+          selectedBox.append(hint);
+          if (required) input.setCustomValidity(validationMessage);
         } else {
           renderChips();
-          input.setCustomValidity('');
+          if (required) input.setCustomValidity('');
         }
+        hidden.dispatchEvent(new Event('change', { bubbles: true }));
       };
       const refreshOptionStates = () => {
         list.querySelectorAll('[data-merchant-id]').forEach((button) => {
-          const id = button.dataset.merchantId;
-          const isSelected = selected.has(id);
-          const assigned = button.dataset.assigned === 'true';
+          const value = valueFromOption(button);
+          const isSelected = selected.has(value);
           button.classList.toggle('is-selected', isSelected);
-          button.disabled = !isSelected && assigned;
-          const text = isSelected
-            ? `${button.dataset.label} ✓ Added`
-            : assigned
-              ? `${button.dataset.label} — already assigned`
-              : button.dataset.label;
-          button.textContent = text;
           button.setAttribute('aria-selected', String(isSelected));
+          if (isLocal) return;
+          const assigned = button.dataset.assigned === 'true';
+          const label = button.dataset.label || button.textContent;
+          button.disabled = !isSelected && assigned;
+          button.textContent = isSelected
+            ? `${label} ${singleSelect ? '✓ Selected' : '✓ Added'}`
+            : assigned
+              ? `${label} — already assigned`
+              : label;
         });
       };
+      localOptions.forEach((option) => {
+        option.addEventListener('click', () => {
+          selectAllActive = false;
+          const value = valueFromOption(option);
+          if (singleSelect) {
+            selected.clear();
+            selected.set(value, merchantFromOption(option));
+            input.value = '';
+            closeList();
+          } else if (selected.has(value)) {
+            selected.delete(value);
+          } else {
+            selected.set(value, merchantFromOption(option));
+          }
+          syncSelection();
+          refreshOptionStates();
+        });
+      });
+      const applyLocalSearch = () => {
+        const query = input.value.trim().toLowerCase();
+        let visibleCount = 0;
+        localOptions.forEach((option) => {
+          const label = option.dataset.label || option.textContent;
+          option.hidden = !label.toLowerCase().includes(query);
+          if (!option.hidden) visibleCount += 1;
+        });
+        setStatus(`${visibleCount} merchant${visibleCount === 1 ? '' : 's'} shown`);
+        if (empty) empty.hidden = visibleCount !== 0;
+        refreshOptionStates();
+      };
+      root.querySelectorAll('[data-merchant-select]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const selectAll = button.dataset.merchantSelect === 'all';
+          selectAllActive = selectAll;
+          if (!selectAll) {
+            selected.clear();
+          } else {
+            list.querySelectorAll('[data-merchant-id]').forEach((option) => {
+              if (option.disabled || option.hidden) return;
+              const value = valueFromOption(option);
+              selected.set(value, merchantFromOption(option));
+            });
+          }
+          syncSelection();
+          refreshOptionStates();
+        });
+      });
       const renderOptions = (data, append) => {
         list.querySelectorAll('.merchant-picker-status, .merchant-picker-more').forEach((node) => node.remove());
+        statusNode = null;
         if (!append) list.innerHTML = '';
         data.results.forEach((item) => {
           const button = document.createElement('button');
           button.type = 'button';
           button.className = 'merchant-picker-option';
           button.dataset.merchantId = String(item.id);
+          button.dataset.merchantValue = valueField === 'uid' ? item.uid : String(item.id);
           button.dataset.assigned = String(item.assigned);
-          button.dataset.label = `${item.name}`;
+          button.dataset.label = `${item.name} · ${item.uid}`;
+          button.dataset.merchantName = item.name;
+          button.dataset.merchantUid = item.uid;
           button.setAttribute('role', 'option');
           button.addEventListener('click', () => {
-            const id = button.dataset.merchantId;
-            if (selected.has(id)) {
-              selected.delete(id);
+            selectAllActive = false;
+            const value = valueFromOption(button);
+            if (singleSelect) {
+              selected.clear();
+              selected.set(value, merchantFromOption(button));
+              input.value = '';
+              closeList();
+            } else if (selected.has(value)) {
+              selected.delete(value);
             } else {
               if (button.dataset.assigned === 'true') return;
-              selected.set(id, { name: item.name, uid: item.uid });
+              selected.set(value, merchantFromOption(button));
             }
             syncSelection();
             refreshOptionStates();
@@ -450,6 +544,13 @@
         });
         offset = data.next_offset;
         hasMore = data.has_more;
+        if (selectAllActive) {
+          list.querySelectorAll('[data-merchant-id]').forEach((option) => {
+            if (option.disabled || option.hidden) return;
+            const value = valueFromOption(option);
+            selected.set(value, merchantFromOption(option));
+          });
+        }
         setStatus(data.total
           ? `Showing ${offset} of ${data.total} merchants`
           : 'No merchants match your search.');
@@ -460,7 +561,13 @@
           more.className = 'merchant-picker-more';
           more.textContent = `Load ${Math.min(pageSize, data.total - offset)} more`;
           more.addEventListener('click', () => load({ append: true }));
-          list.append(more);
+          if (selectAllActive) {
+            load({ append: true });
+          } else {
+            list.append(more);
+          }
+        } else {
+          selectAllActive = false;
         }
       };
       const load = async ({ append = false, init = false } = {}) => {
@@ -491,11 +598,19 @@
           }
         }
       };
-
       syncSelection();
-      load({ init: true });
-      input.addEventListener('focus', () => openList());
+      if (isLocal) {
+        applyLocalSearch();
+      } else {
+        load({ init: true });
+      }
+      input.addEventListener('focus', openList);
       input.addEventListener('input', () => {
+        if (isLocal) {
+          applyLocalSearch();
+          return;
+        }
+        selectAllActive = false;
         openList();
         window.clearTimeout(debounceTimer);
         debounceTimer = window.setTimeout(() => load(), 200);
@@ -537,19 +652,22 @@
       });
       if (userSelect) {
         userSelect.addEventListener('change', () => {
+          selectAllActive = false;
           selected.clear();
           syncSelection();
           input.value = '';
           load({ init: true });
         });
       }
-      root.closest('form')?.addEventListener('submit', (event) => {
-        if (selected.size === 0) {
-          input.setCustomValidity('Choose at least one merchant.');
-          input.reportValidity();
-          event.preventDefault();
-        }
-      });
+      if (required) {
+        root.closest('form')?.addEventListener('submit', (event) => {
+          if (selected.size === 0) {
+            input.setCustomValidity(validationMessage);
+            input.reportValidity();
+            event.preventDefault();
+          }
+        });
+      }
     });
   </script>
 </body>

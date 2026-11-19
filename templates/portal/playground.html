@@ -20,9 +20,9 @@
           <h2>Request setup</h2>
         </div><span class="stat-icon icon-teal">↗</span>
       </div>
-      {% if playground_merchants %}
+      {% if has_playground_merchants %}
         <form id="playground-form" class="playground-form" data-api-username="{{ user.username }}">
-          <div style="display: flex; gap: 1rem;">
+          <div class="playground-form-row">
             <div class="form-field">
               <label for="playground-endpoint">API endpoint</label><select id="playground-endpoint" class="form-control">
                 <option value="report">Settlement Report</option>
@@ -32,11 +32,8 @@
             </div>
 
             <div class="form-field" id="single-merchant-field">
-              <label for="playground-merchant">Merchant</label><select id="playground-merchant" class="form-control">
-                {% for merchant in playground_merchants %}
-                  <option value="{{ merchant.merchant_uid }}">{{ merchant.merchant_name }} · {{ merchant.merchant_uid }}</option>
-                {% endfor %}
-              </select>
+              <label for="playground-single-search">Merchant</label>
+              {% include "portal/includes/merchant_picker.html" with picker_id="playground-single" options_url=playground_merchant_options_url input_name="playground_merchant" single_select=True value_field="uid" help_text="Search by merchant name or UID, then choose one." search_placeholder="Search by name or UID" %}
             </div>
           </div>
           <div class="playground-route">
@@ -44,31 +41,7 @@
           </div>
           <fieldset class="form-field multi-merchant-field" id="multi-merchant-field" hidden>
             <legend>Merchants</legend>
-            <p class="merchant-picker-help">Search the merchants available to your account, then select one or more.</p>
-            <div class="merchant-picker" id="merchant-picker">
-              <div class="merchant-picker-toolbar">
-                <label class="merchant-picker-search"><span aria-hidden="true">⌕</span><input id="merchant-picker-search" type="search" placeholder="Search by name or UID" autocomplete="off" /></label>
-                <div class="merchant-picker-actions">
-                  <button type="button" data-merchant-select="all">Select All</button><button type="button" data-merchant-select="none">Clear</button>
-                </div>
-              </div>
-              <div class="merchant-picker-selection">
-                <strong id="merchant-selection-count" aria-live="polite">0 selected</strong>
-                <div class="merchant-picker-selected" id="merchant-picker-selected" aria-label="Selected merchants" aria-live="polite"></div>
-              </div>
-              <div class="merchant-picker-list" id="playground-merchants">
-                {% for merchant in playground_merchants %}
-                  <label class="merchant-picker-option" data-merchant-option>
-                    <input type="checkbox" value="{{ merchant.merchant_uid }}" data-merchant-name="{{ merchant.merchant_name }}" />
-                    <span class="merchant-picker-copy"><strong>{{ merchant.merchant_name }}</strong><small>{{ merchant.merchant_uid }}</small></span>
-                  </label>
-                {% endfor %}
-              </div>
-              <p class="merchant-picker-empty" id="merchant-picker-empty" hidden>No merchants match that search.</p>
-              <div class="merchant-picker-footer">
-                <span id="merchant-visible-count"></span>
-              </div>
-            </div>
+            {% include "portal/includes/merchant_picker.html" with picker_id="playground-multi" options_url=playground_merchant_options_url input_name="playground_merchants" value_field="uid" show_bulk_actions=True optional_selection=True help_text="Search the merchants available to your account, then select one or more." search_placeholder="Search by name or UID" %}
           </fieldset>
           <div class="playground-dates">
             <div class="form-field">
@@ -125,18 +98,13 @@
       const badge = document.getElementById('response-badge')
       const meta = document.getElementById('response-meta')
       const routePreview = document.getElementById('playground-route')
-      const merchantSelectionDisplay = document.getElementById('merchant-picker-selected')
-      const merchantPicker = document.getElementById('playground-merchants')
-      const merchantSearch = document.getElementById('merchant-picker-search')
-      const merchantCount = document.getElementById('merchant-selection-count')
-      const merchantEmpty = document.getElementById('merchant-picker-empty')
-      const merchantVisibleCount = document.getElementById('merchant-visible-count')
-      const merchantOptions = merchantPicker.querySelectorAll('[data-merchant-option]')
+      const singleMerchantInput = document.getElementById('playground-single-input')
+      const merchantPickerInput = document.getElementById('playground-multi-input')
       let accessToken = null
     
       const requestPath = () => {
         if (endpoint.value === 'multi-report') return '/api/v1/settlement-report'
-        const merchant = encodeURIComponent(document.getElementById('playground-merchant').value)
+        const merchant = encodeURIComponent(singleMerchantInput.value)
         if (endpoint.value === 'transactions') {
           const page = encodeURIComponent(document.getElementById('playground-page').value || '1')
           return `/api/v1/settlement-transactions/${merchant}?page=${page}`
@@ -146,61 +114,9 @@
       const updateRoutePreview = () => {
         routePreview.textContent = requestPath()
       }
-      const updateMerchantSelection = () => {
-        const selectedInputs = Array.from(merchantPicker.querySelectorAll('input:checked'))
-        const selectedCount = selectedInputs.length
-        merchantCount.textContent = `${selectedCount} selected`
-        merchantSelectionDisplay.replaceChildren(
-          ...selectedInputs.map((input) => {
-            const chip = document.createElement('span')
-            chip.className = 'merchant-picker-chip'
-            const name = document.createElement('span')
-            name.textContent = input.dataset.merchantName
-            const remove = document.createElement('button')
-            remove.type = 'button'
-            remove.className = 'merchant-picker-chip-remove'
-            remove.dataset.removeMerchant = input.value
-            remove.setAttribute('aria-label', `Remove ${input.dataset.merchantName}`)
-            remove.textContent = '×'
-            chip.append(name, remove)
-            return chip
-          })
-        )
-        merchantOptions.forEach((option) => {
-          option.classList.toggle('selected', option.querySelector('input').checked)
-        })
-      }
-      merchantPicker.addEventListener('change', updateMerchantSelection)
-      merchantSearch.addEventListener('input', () => {
-        const query = merchantSearch.value.trim().toLowerCase()
-        let visibleCount = 0
-        merchantOptions.forEach((option) => {
-          option.hidden = !option.textContent.toLowerCase().includes(query)
-          if (!option.hidden) visibleCount += 1
-        })
-        merchantEmpty.hidden = visibleCount !== 0
-        merchantVisibleCount.textContent = `${visibleCount} merchant${visibleCount === 1 ? '' : 's'} shown`
-      })
-      merchantSelectionDisplay.addEventListener('click', (event) => {
-        const removeButton = event.target.closest('[data-remove-merchant]')
-        if (!removeButton) return
-        const checkbox = Array.from(merchantPicker.querySelectorAll('input[type="checkbox"]')).find((input) => input.value === removeButton.dataset.removeMerchant)
-        if (checkbox) {
-          checkbox.checked = false
-          updateMerchantSelection()
-        }
-      })
-      document.querySelectorAll('[data-merchant-select]').forEach((button) => {
-        button.addEventListener('click', () => {
-          merchantOptions.forEach((option) => {
-            if (button.dataset.merchantSelect === 'all' && option.hidden) return
-            option.querySelector('input').checked = button.dataset.merchantSelect === 'all'
-          })
-          updateMerchantSelection()
-        })
-      })
-      merchantVisibleCount.textContent = `${merchantOptions.length} merchants available`
-      updateMerchantSelection()
+      const selectedMerchantUids = () => (
+        merchantPickerInput.value.split(',').filter(Boolean)
+      )
       endpoint.addEventListener('change', () => {
         const isMulti = endpoint.value === 'multi-report'
         singleMerchantField.hidden = isMulti
@@ -208,7 +124,7 @@
         pageField.hidden = endpoint.value !== 'transactions'
         updateRoutePreview()
       })
-      document.getElementById('playground-merchant').addEventListener('change', updateRoutePreview)
+      singleMerchantInput.addEventListener('change', updateRoutePreview)
       document.getElementById('playground-page').addEventListener('input', updateRoutePreview)
       updateRoutePreview()
       reconnectButton.addEventListener('click', () => {
@@ -254,7 +170,7 @@
         if (!form.reportValidity()) return
         const from = document.getElementById('playground-from').value
         const to = document.getElementById('playground-to').value
-        const selectedMerchants = endpoint.value === 'multi-report' ? Array.from(merchantPicker.querySelectorAll('input:checked'), (input) => input.value) : []
+        const selectedMerchants = endpoint.value === 'multi-report' ? selectedMerchantUids() : []
         if (endpoint.value === 'multi-report' && selectedMerchants.length === 0) {
           showResponse('Select at least one merchant for a multi-merchant request.', 'Check input')
           return

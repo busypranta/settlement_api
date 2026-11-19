@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_required
@@ -18,6 +19,7 @@ from apps.settlement_api.permissions import (
     managed_user_ids,
     merchant_access_ids,
 )
+from . import merchant_sync as sync_service
 from .forms import (
     AccountEditForm,
     AdminPasswordResetForm,
@@ -55,6 +57,10 @@ class PrecountedQuerySet:
 
     def __getitem__(self, key):
         return self.queryset[key]
+
+
+def _is_superadmin(user):
+    return bool(user.is_superuser or user.role == User.ROLE_SUPERADMIN)
 
 
 def scoped_users(user):
@@ -169,13 +175,10 @@ def api_logs(request):
 
 @login_required
 def api_playground(request):
-    merchants = list(
-        scoped_merchants(request.user)
-        .filter(is_active=True)
-        .order_by('merchant_name')
-    )
+    merchants = scoped_merchants(request.user).filter(is_active=True)
     allowed_merchant_ids = merchant_access_ids(request.user, merchants)
-    merchants = [merchant for merchant in merchants if merchant.pk in allowed_merchant_ids]
+    merchants = merchants.filter(pk__in=allowed_merchant_ids)
+    merchant_count = merchants.count()
     can_use_multi_merchant_api = (
         request.user.role != User.ROLE_USER
         or request.user.allow_multiple_merchants
@@ -185,8 +188,9 @@ def api_playground(request):
         or request.user.allow_settlement_transactions
     )
     return render(request, 'portal/playground.html', {
-        'playground_merchants': merchants,
-        'can_use_multi_merchant_api': can_use_multi_merchant_api and len(merchants) > 1,
+        'has_playground_merchants': merchant_count > 0,
+        'playground_merchant_options_url': reverse('portal-playground-merchant-options'),
+        'can_use_multi_merchant_api': can_use_multi_merchant_api and merchant_count > 1,
         'can_use_settlement_transactions_api': can_use_settlement_transactions_api,
     })
 
@@ -241,6 +245,209 @@ def merchant_options(request):
         'next_offset': next_offset,
         'has_more': next_offset < total,
         'page_size': page_size,
+    })
+
+
+@login_required
+def playground_merchant_options(request):
+    """Lazy, searchable merchant options scoped to the signed-in playground user."""
+    query = request.GET.get('q', '').strip()[:100]
+    try:
+        offset = max(0, int(request.GET.get('offset', 0)))
+    except (TypeError, ValueError):
+        offset = 0
+    page_size = 10
+
+    merchants = scoped_merchants(request.user).filter(is_active=True)
+    allowed_ids = merchant_access_ids(request.user, merchants)
+    merchants = merchants.filter(pk__in=allowed_ids)
+    if query:
+        merchants = merchants.filter(
+            Q(merchant_name__icontains=query) | Q(merchant_uid__icontains=query),
+        )
+    merchants = merchants.order_by('merchant_name').distinct()
+    total = merchants.count()
+
+    results = [
+        {
+            'id': merchant.pk,
+            'name': merchant.merchant_name,
+            'uid': merchant.merchant_uid,
+            'assigned': False,
+        }
+        for merchant in merchants[offset:offset + page_size]
+    ]
+    next_offset = offset + len(results)
+    return JsonResponse({
+        'results': results,
+        'total': total,
+        'next_offset': next_offset,
+        'has_more': next_offset < total,
+        'page_size': page_size,
+    })
+
+
+def _sync_offset(request):
+    try:
+        return max(0, int(request.session.get(sync_service.OFFSET_KEY, 0)))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _save_sync_preview(request, preview):
+    """Store the remaining batch, or advance the offset when it is finished."""
+    if preview['items']:
+        sync_service.refresh_counts(preview)
+        request.session[sync_service.SESSION_KEY] = preview
+    else:
+        request.session.pop(sync_service.SESSION_KEY, None)
+        request.session[sync_service.OFFSET_KEY] = preview['next_offset']
+    request.session.modified = True
+
+
+def _sync_preview_message(preview, skipped=0):
+    message = (
+        f'Read {preview["row_count"]} source row(s): '
+        f'{preview["create_count"]} new, {preview["update_count"]} to update.'
+    )
+    if skipped:
+        message += f' {skipped} row(s) were skipped (missing UID/name or duplicates).'
+    return message
+
+
+@login_required
+def merchant_sync(request):
+    """Preview one batch of source merchants, then apply it."""
+    if not _is_superadmin(request.user):
+        messages.error(request, 'Only super admins can sync merchants.')
+        return redirect('portal-merchant-access')
+
+    preview = request.session.get(sync_service.SESSION_KEY)
+    if request.method == 'POST':
+        action = request.POST.get('action')
+
+        if action == 'fetch_database':
+            offset = _sync_offset(request)
+            try:
+                rows, skipped, fetched = sync_service.fetch_database_rows(offset=offset)
+                new_preview = sync_service.build_preview(rows, offset, offset + fetched)
+                if not fetched:
+                    messages.info(
+                        request,
+                        'No more source merchants found. Use Start over to scan from the beginning.',
+                    )
+                    request.session.pop(sync_service.SESSION_KEY, None)
+                elif not new_preview['items']:
+                    messages.info(
+                        request,
+                        f'{len(rows)} source row(s) read; no new or changed merchants.',
+                    )
+                    _save_sync_preview(request, new_preview)
+                else:
+                    request.session[sync_service.SESSION_KEY] = new_preview
+                    request.session.modified = True
+                    messages.success(request, _sync_preview_message(new_preview, skipped))
+            except sync_service.SyncError as exc:
+                messages.error(request, str(exc))
+            return redirect('portal-merchant-sync')
+
+        if action == 'apply_one':
+            if not preview:
+                messages.error(request, 'No preview is available. Sync a batch first.')
+                return redirect('portal-merchant-sync')
+
+            key = request.POST.get('row_key', '')
+            item = next((row for row in preview['items'] if row['key'] == key), None)
+            if item is None:
+                messages.error(request, 'That preview row was not found. Sync the batch again.')
+            elif item.get('error'):
+                messages.error(request, f'{item["uid"]}: {item["error"]}')
+            else:
+                try:
+                    merchant, applied_action = sync_service.apply_item(item, request.user)
+                except sync_service.SyncApplyError as exc:
+                    item['error'] = str(exc)
+                    _save_sync_preview(request, preview)
+                    messages.error(request, f'{item["uid"]}: {exc}')
+                else:
+                    audit_action(
+                        request,
+                        'merchant.created' if applied_action == 'create' else 'merchant.updated',
+                        merchant,
+                        {'source': 'sync', 'sync_source': preview['source']},
+                    )
+                    preview['items'] = [row for row in preview['items'] if row['key'] != key]
+                    _save_sync_preview(request, preview)
+                    verb = 'created' if applied_action == 'create' else 'updated'
+                    messages.success(request, f'{merchant.merchant_name} was {verb}.')
+            return redirect('portal-merchant-sync')
+
+        if action == 'apply_all':
+            if not preview:
+                messages.error(request, 'No preview is available. Sync a batch first.')
+                return redirect('portal-merchant-sync')
+
+            applied_keys = set()
+            errors = []
+            created_count = 0
+            updated_count = 0
+            # Update existing names first so a rename can free up a name that a
+            # new row wants to use.
+            ordered = sorted(preview['items'], key=lambda row: (row['action'] != 'update', row['key']))
+            for item in ordered:
+                if item.get('error'):
+                    errors.append(f'{item["uid"]}: {item["error"]}')
+                    continue
+                try:
+                    merchant, applied_action = sync_service.apply_item(item, request.user)
+                except sync_service.SyncApplyError as exc:
+                    item['error'] = str(exc)
+                    errors.append(f'{item["uid"]}: {exc}')
+                    continue
+                applied_keys.add(item['key'])
+                if applied_action == 'create':
+                    created_count += 1
+                else:
+                    updated_count += 1
+                audit_action(
+                    request,
+                    'merchant.created' if applied_action == 'create' else 'merchant.updated',
+                    merchant,
+                    {'source': 'sync', 'sync_source': preview['source']},
+                )
+
+            preview['items'] = [row for row in preview['items'] if row['key'] not in applied_keys]
+            _save_sync_preview(request, preview)
+
+            messages.success(
+                request,
+                f'Created {created_count} and updated {updated_count} merchant(s).',
+            )
+            if errors:
+                messages.error(request, 'Could not apply: ' + '; '.join(errors[:5]))
+            return redirect('portal-merchant-sync')
+
+        if action == 'clear_preview':
+            request.session.pop(sync_service.SESSION_KEY, None)
+            request.session.modified = True
+            messages.info(request, 'Merchant sync preview cleared.')
+            return redirect('portal-merchant-sync')
+
+        if action == 'reset_offset':
+            request.session.pop(sync_service.SESSION_KEY, None)
+            request.session[sync_service.OFFSET_KEY] = 0
+            request.session.modified = True
+            messages.info(request, 'Merchant sync restarted from the first batch.')
+            return redirect('portal-merchant-sync')
+
+        messages.error(request, 'Unknown merchant sync action.')
+        return redirect('portal-merchant-sync')
+
+    return render(request, 'portal/merchant_sync.html', {
+        'preview': preview,
+        'source_schema': getattr(settings, 'SOURCE_SCHEMA', ''),
+        'batch_size': sync_service.batch_size(),
+        'offset': _sync_offset(request),
     })
 
 
@@ -378,6 +585,7 @@ def merchant_access(request):
         'page_obj': page_obj,
         'query': query,
         'is_admin': is_admin,
+        'can_sync_merchants': _is_superadmin(request.user),
         'merchant_form': merchant_form,
         'edit_merchant_form': edit_merchant_form,
         'edit_merchant_open': edit_merchant_open,
